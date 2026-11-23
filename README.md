@@ -174,14 +174,35 @@ XIAO ESP32S3 を使う場合は `-e xiao_evidence` でビルドします。
 
 ### 画像 AI のモデル（Grove Vision AI V2）
 
-学習済みモデル（v13b、入力 96 px、int8、Vela 変換済み）は GitHub の **Releases** で配布しています。Vision V2 を USB-C で PC に直結し、Himax の書き込みツール（`xmodem_send.py`）でフラッシュの `0x400000` に書き込みます。
+学習済みモデル（v13b、入力 96 px、int8、Vela 変換済み）は GitHub の **Releases** で配布しています。モデルのファイルは Git の履歴には入れていません。
 
-```
-xmodem_send.py --port=COMx --baudrate=921600 --protocol=xmodem \
-  --file=<SSCMA のファームウェアイメージ> --model="<larva_visibility_v13b_96_int8_vela.tflite> 0x400000 0x00000"
-```
+| 項目 | 値 |
+|---|---|
+| ファイル | `larva_visibility_v13b_96_int8_vela.tflite`（621,104 bytes） |
+| SHA256 | `ae9a10edd01f8b4fcdf56780b1725cfaf07a07c6bf81705763f588b878fd448b` |
+| メタデータの版 | `1.5.0`（`scripts/vision_model.py` の `KNOWN_MODEL_ARTIFACTS`） |
+| Vision V2 のファームウェア | `v2023.12.19`（Seeed/Himax の復旧イメージ） |
 
-- ポートを開くと自動でブートローダーに入ります。転送中にリセットボタンを押さないでください。
+SenseCraft AI からの書き込みは使いません。入るファームウェア（2024.08.19）では、撮影した画像が 1 枚前のものになります。
+
+1. **ダウンロードして確認する**：Releases から `.tflite` をダウンロードし、SHA256 が上の値と一致することを確認します。
+   ```powershell
+   Get-FileHash .\larva_visibility_v13b_96_int8_vela.tflite -Algorithm SHA256
+   ```
+2. **書き込みツールを用意する**：Himax の [Seeed_Grove_Vision_AI_Module_V2](https://github.com/HimaxWiseEyePlus/Seeed_Grove_Vision_AI_Module_V2) リポジトリから、`xmodem_send.py` と v2023.12.19 の復旧イメージ（`.img`）を入手します。`xmodem_send.py` には `pip install pyserial xmodem` が必要です。
+3. **ファームウェアとモデルを書き込む**：Vision V2 を Grove Shield から外し、USB-C で PC に直結して、ファームウェアとモデルを同時に送ります。モデルはフラッシュの `0x400000` に入ります。Windows では、先に `$env:PYTHONIOENCODING='utf-8'` を設定してください。
+   ```
+   python xmodem_send.py --port=COMx --baudrate=921600 --protocol=xmodem \
+     --file=<v2023.12.19 の復旧イメージ.img> --model="larva_visibility_v13b_96_int8_vela.tflite 0x400000 0x00000"
+   ```
+   - ポートを開くと自動でブートローダーに入ります。転送中にリセットボタンを押さないでください（転送が止まります）。
+4. **メタデータを書き込む**：PC 側はこのメタデータでモデルを照合します。書き込まないと、判定はクラス名のない生の出力として記録されるだけになります。
+   ```powershell
+   .\.venv\Scripts\python.exe scripts/vision_set_info.py COMx
+   ```
+   書き込んだ内容を読み戻して照合し、分類の出力が 1 回返ってくれば成功です。
+5. **元に戻す**：Vision V2 を Shield に戻し、ブリッジを起動し直します。
+
 - 画像 AI がなくても、撮影と記録は動きます（判定が記録されないだけです）。
 
 ## 使い方
