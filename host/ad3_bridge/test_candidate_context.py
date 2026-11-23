@@ -142,17 +142,22 @@ class LiveContextTest(unittest.TestCase):
     def test_live_context_is_a_separate_file_and_candidates_stay_unchanged(self):
         with tempfile.TemporaryDirectory() as folder:
             manager = BridgeManager(Path(folder))
-            # 7-9 s: 700 Hz burst (B2 only); 12-14 s: 10 Hz + 700 Hz (the observation trigger, 2026-11-23)
+            # 7-9 s: 700 Hz burst (B2 only); 12-14 s: 10 Hz + 700 Hz (1-40 Hz). Since 2026-11-24 both
+            # start an observation trigger; the B2-started one is sent as B2_guarded_mad.
             manager.start(dict(mode='mock', duration_s=16))  # CH1 all zero
             manager.thread.join(60)
             state = manager.snapshot()
             run = Path(folder) / ('ad3-' + state['run_id'])
             candidates = [json.loads(line) for line in (run / 'candidates.jsonl').read_text().splitlines()]
-            self.assertTrue(candidates)
-            self.assertTrue(all(c['detector'] == 'LOWFREQ_FOREST_RATIO' for c in candidates))
-            self.assertGreaterEqual(candidates[0]['t_start_s'], 12)
+            first = candidates[0]
+            self.assertTrue(7 <= first['t_start_s'] < 9)
+            self.assertEqual((first['detector'], first['triggered_by']), ('B2_guarded_mad', ['B2']))
+            self.assertTrue(any(c['detector'] == 'LOWFREQ_FOREST_RATIO' and c['t_start_s'] >= 12 for c in candidates))
             b2 = [json.loads(line) for line in (run / 'b2_candidates.jsonl').read_text().splitlines()]
-            self.assertTrue(any(7 <= c['t_start_s'] < 9 for c in b2) and all(c['forwarded'] is False for c in b2))
+            self.assertEqual([c['trigger_seq'] for c in b2 if 7 <= c['t_start_s'] < 9][0], first['candidate_seq'])
+            manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
+            self.assertEqual(manifest['observation_trigger']['detector'], 'LOWFREQ_FOREST_RATIO_OR_B2')
+            self.assertEqual(manifest['observation_trigger']['b2_triggers'], 1)
             # the trigger's own values per window: live snapshot, saved file, review graph (2026-11-23)
             self.assertTrue(state['trigger_windows'] and state['trigger_threshold'] > 0)
             saved = (run / 'trigger_windows.csv').read_text().splitlines()

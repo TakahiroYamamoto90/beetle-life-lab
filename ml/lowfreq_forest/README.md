@@ -1,6 +1,6 @@
 # 低周波フォレスト（lowfreq_forest_v1）
 
-**2026-11-23（ファームウェア 0.17.0）から、観察のきっかけに使っています。** 250 ms ごとに「このフォレストの確率 ≥ しきい値」または「CH2 の 1–40 Hz の比 ≥ 3」の窓が現れたら、MCU に観察のきっかけを送ります（`host/ad3_bridge/activity_trigger.py`、検出器名 `LOWFREQ_FOREST_RATIO`）。同じモデルは MCU（Arduino Nano ESP32 / XIAO ESP32S3）の中でも動き、PC の判定と照合しています。これは観察のきっかけで、幼虫の検出ではありません。
+**2026-11-23（ファームウェア 0.17.0）から、観察のきっかけに使っています。** 250 ms ごとに「このフォレストの確率 ≥ しきい値」または「CH2 の 1–40 Hz の比 ≥ 3」の窓が現れたら、MCU に観察のきっかけを送ります（`host/ad3_bridge/activity_trigger.py`、検出器名 `LOWFREQ_FOREST_RATIO`）。2026-11-24 からは、300–1500 Hz の B2 の候補もきっかけに加えています（OR。B2 が始めたきっかけは `B2_guarded_mad` として送る。根拠は `docs/analysis/trigger_b2_union_20261124.md`）。同じモデルは MCU（Arduino Nano ESP32 / XIAO ESP32S3）の中でも動き、PC の判定と照合しています。これは観察のきっかけで、幼虫の検出ではありません。
 
 以下は 11/20〜11/21 の作成時の記録です（「XIAO には送っておらず」などは当時の状態）。
 

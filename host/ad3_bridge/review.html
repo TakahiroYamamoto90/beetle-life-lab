@@ -43,7 +43,7 @@
 <h3>全体：1–40 Hz 低周波の振幅（mV、対数、表示用）<small class="detector" style="font-weight:400;color:#0e7c86">　上端の青緑の帯＝低周波の活動らしさ（PC参考・暫定しきい値。検出ではなく、MCUには送りません。アーム動作中は除外、物音でも出ます）。その下の紫の帯＝同じ入力の小さなフォレスト（20本・深さ5、MCUに載る大きさ。11/18・11/19のラベルで学習した暫定版）。その下の紺の帯＝同じフォレストを取得中に MCU が計算した結果（ファームウェア 0.15.0 以降・参考）<span id="forestNote"></span></small></h3><canvas id="ovLow" class="ov"></canvas><div id="shadowNote" class="detector" style="font-size:12px;color:#555;margin:2px 0 6px"></div>
 <h3 class="detector">全体：観察のきっかけ ― フォレストの確率（対数、破線=しきい値）<small id="triggerSource" style="font-weight:400"></small></h3><canvas id="ovForestP" class="ov detector"></canvas>
 <h3 class="detector">全体：観察のきっかけ ― 低周波 1–40 Hz の比（CH2 ÷ 直前30秒の下位20%、対数、破線=3）</h3><canvas id="ovRatio" class="ov detector"></canvas>
-<h3 class="detector">全体：振動イベント検出スコア（B2、対数、破線=開始閾値4。2026-11-23 からは比較用で、観察のきっかけには使っていません）</h3><canvas id="ovScore" class="ov detector"></canvas>
+<h3 class="detector">全体：振動イベント検出スコア（B2、対数、破線=開始閾値4。2026-11-23 の取得は比較用、2026-11-24 からは低周波と並ぶ観察のきっかけ）</h3><canvas id="ovScore" class="ov detector"></canvas>
 <div class="specBlock" hidden><h3>全体：動画の音声（周波数 40 Hz–16 kHz 対数・時間。明るいほど強い）<span class="specNote muted"></span></h3><canvas id="ovSpec" class="ov"></canvas></div>
 <div id="shotsBlock" hidden><h3>全体：能動観測（アームで視点を選んだ撮影。枠の色 F=FRONT 橙・T=TOP 緑・B=BACK 紫。破線枠は推定時刻。押すとその時刻へ）</h3><canvas id="ovShots" class="ov shots"></canvas></div>
 <h3>拡大：対象センサー CH2（ケース内ピエゾ）原波形（mV、最小・最大）</h3><canvas id="dCh2" class="detail"></canvas>

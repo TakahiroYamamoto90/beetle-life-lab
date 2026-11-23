@@ -431,13 +431,13 @@ class BridgeManager:
         save_manifest()
         try:
             processor = Processor()
-            # 2026-11-23 (user decision): the observation trigger is the start of a 1-40 Hz activity
-            # span (forest or ratio >= 3); B2 still runs and is saved to b2_candidates.jsonl only.
-            trigger = activity_trigger.ActivityTrigger()
+            # 2026-11-24 (user decision): the observation trigger is the start of an activity span:
+            # 1-40 Hz (forest or ratio >= 3) or a B2 candidate. Every B2 candidate is still saved.
+            trigger = activity_trigger.ActivityTrigger(b2_config_sha256=processor.fingerprint)
             self.update(trigger_threshold=trigger.model['threshold'], trigger_ratio_min=activity_trigger.RATIO_MIN)
-            manifest['observation_trigger'] = dict(detector=activity_trigger.DETECTOR, config_sha256=trigger.fingerprint,
+            manifest['observation_trigger'] = dict(detector=activity_trigger.TRIGGER, config_sha256=trigger.fingerprint,
                                                    config=trigger.config, note=activity_trigger.NOTE,
-                                                   b2='b2_candidates.jsonl (comparison only, not sent)')
+                                                   b2='b2_candidates.jsonl (all B2 candidates; trigger_seq = the trigger one started)')
             bands = disturbance.BandTracker()  # PC-only reference numbers; never detector input
             manifest['processing'] = processor.metadata
             manifest['config_sha256'] = processor.fingerprint
@@ -518,14 +518,16 @@ class BridgeManager:
                     first_index = count
                     count += len(values)  # raw samples remain accounted for if detection faults
                     rows, b2_found = processor.push(values, first_index)
-                    for event in b2_found:  # comparison only (2026-11-23): never sent to the MCU
+                    judged = len(trigger.windows)
+                    found = trigger.push(values, b2_found)
+                    started = {e['b2_t_start_s']: number + i + 1 for i, e in enumerate(found) if 'b2_t_start_s' in e}
+                    for event in b2_found:  # all saved; trigger_seq when it started an observation trigger
                         b2_number += 1
                         b2_file.write(json.dumps(dict(event, b2_seq=b2_number, origin=origin, source_run_id=run_id,
-                                                      config_sha256=processor.fingerprint, forwarded=False,
+                                                      config_sha256=processor.fingerprint,
+                                                      trigger_seq=started.get(event['t_start_s']),
                                                       biological_activity='UNKNOWN'), allow_nan=False) + '\n')
                         b2_file.flush()
-                    judged = len(trigger.windows)
-                    found = trigger.push(values)
                     fresh = [[round(t, 3), None if p is None else round(p, 4), None if r is None else round(r, 4), int(a), int(m)]
                              for t, p, r, a, m in trigger.windows[judged:]]
                     if fresh:

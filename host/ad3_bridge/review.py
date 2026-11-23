@@ -627,8 +627,8 @@ class ReviewStore:
             cached = (key, data)
         manifest = json.loads((path / 'manifest.json').read_text(encoding='utf-8'))
         # candidates.jsonl = the observation triggers sent to the MCU. Until 2026-11-22 they were B2;
-        # from 2026-11-23 they are the 1-40 Hz activity starts (detector LOWFREQ_FOREST_RATIO) and B2
-        # is saved for comparison in b2_candidates.jsonl.
+        # on 2026-11-23 the 1-40 Hz activity starts (detector LOWFREQ_FOREST_RATIO), B2 saved for
+        # comparison in b2_candidates.jsonl; from 2026-11-24 either (B2-started ones: B2_guarded_mad).
         candidates = [dict(t_start_s=c.get('t_start_s'), t_end_s=c.get('t_end_s'), peak_score=c.get('peak_score'),
                            detector=c.get('detector', 'B2_guarded_mad'), triggered_by=c.get('triggered_by'))
                       for c in read_jsonl(path / 'candidates.jsonl')]
@@ -658,8 +658,10 @@ class ReviewStore:
         return dict({k: v for k, v in cached[1].items() if k != '_lowfreq'}, run=run, origin=manifest.get('origin'), started_at_pc=manifest.get('started_at_pc'),
                     note=(manifest.get('request') or {}).get('note') or '', candidates=candidates, b2_candidates=b2,
                     trigger_series=trigger_series(path, cached[1]['_lowfreq'], [(s['t0_s'], s['t1_s']) for s in arm], self.forest),
-                    candidate_detector=candidates[0]['detector'] if candidates else
-                    (manifest.get('observation_trigger') or {}).get('detector', 'B2_guarded_mad'),
+                    # the run's trigger (2026-11-24: LOWFREQ_FOREST_RATIO_OR_B2, whose candidates name
+                    # the source that started each one), else the first candidate's detector
+                    candidate_detector=(manifest.get('observation_trigger') or {}).get('detector') or
+                    (candidates[0]['detector'] if candidates else 'B2_guarded_mad'),
                     video=self.video_info(path, manifest, saved_offset),
                     live_marks=read_jsonl(path / 'annotations.jsonl'),
                     review_marks=marks, review_status=review_status(path),

@@ -174,7 +174,8 @@ def status(port):
     port.write(b'evidence-status\n');port.flush()
     for line in receive(port):
         if line.startswith('EVIDENCE_STATUS '):return json.loads(line.split(' ',1)[1])
-    raise TimeoutError('Evidence status not received; use xiao_evidence firmware')
+    raise TimeoutError('Evidence status not received: the board did not answer (needs nano_evidence or '
+                       'xiao_evidence firmware; if it was running, it may be hung: replug USB)')
 
 
 def log_digest(lines):

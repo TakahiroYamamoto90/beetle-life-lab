@@ -29,9 +29,9 @@
 <small>押した時点の取得経過秒を、PCの annotations.jsonl にだけ保存します（人の操作記録・おおよその時刻）。検出やMCUには送りません。グラフでは掘削中を薄い黄色、物音を紫の線で表示します。</small></div>
 <h3>CH2 原波形（mV、5 msごとの最小・最大）</h3><canvas id="wave"></canvas>
 <h3>CH2 帯域RMS（mV）</h3><canvas id="rms"></canvas>
-<h3>観察のきっかけ：フォレストの確率（0〜1／破線=しきい値。どちらかが越えた最初の時刻で MCU に送ります）</h3><canvas id="forestP"></canvas>
+<h3>観察のきっかけ：フォレストの確率（0〜1／破線=しきい値。下の 3 つのどれかが越えた最初の時刻で MCU に送ります）</h3><canvas id="forestP"></canvas>
 <h3>観察のきっかけ：低周波 1–40 Hz の比（CH2 ÷ 直前30秒の下位20%／破線=3）</h3><canvas id="lowRatio"></canvas>
-<h3>振動イベント検出スコア（B2・比較用。2026-11-23 からは観察のきっかけに使っていません／破線=4）</h3><canvas id="score"></canvas></section>
+<h3>観察のきっかけ：振動イベント検出スコア（B2、300–1500 Hz／破線=4。2026-11-24 から）</h3><canvas id="score"></canvas></section>
 <section><h3>振動イベント候補（知覚の出力）</h3><p><small>候補は区間終了後に転送します。終了未確定の候補やFAULTは転送しません。</small></p>
 <table><thead><tr><th>#</th><th>区間（秒）</th><th>ピークRMS</th><th>ピークスコア</th><th title="候補区間の300–1500 Hz帯域RMS ÷ 直前5秒の中央値。参考値で、検出・MCUには使いません">対象 CH2 上昇</th><th title="同じ計算の参照センサーCH1（外乱・自分の動きの監視）">参照 CH1 上昇</th></tr></thead><tbody id="events"></tbody></table></section>
 <section><h3>判断と行動：見えないなら、観測方法を変える（ルールベースの方策・能動観測）</h3>

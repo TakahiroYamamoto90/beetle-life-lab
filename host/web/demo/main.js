@@ -265,11 +265,13 @@ function logTicks(lo, hi) {
 }
 // The graph's source: 1-40 Hz RMS (default, replay only) or the detector's 300-1500 Hz band RMS.
 // Which band started the observations depends on the run: B2 (300-1500 Hz) until 2026-11-22,
-// the 1-40 Hz activity (forest or ratio >= 3) from 2026-11-23 (overview.candidate_detector).
+// the 1-40 Hz activity (forest or ratio >= 3) on 2026-11-23, either of them from 2026-11-24
+// (overview.candidate_detector LOWFREQ_FOREST_RATIO_OR_B2).
 const WAVE_TEXT = {low: '低周波 1–40 Hz（RMS 250 ms・対数）', band: 'B2 振動候補（300–1500 Hz 帯域RMS）'};
 const WAVE_LABEL = new Proxy({}, {get: (_, k) => {
-  const lowTrigger = (S.ov?.candidate_detector || (S.mode === 'live' ? 'LOWFREQ_FOREST_RATIO' : 'B2_guarded_mad')) === 'LOWFREQ_FOREST_RATIO';
-  return (lowTrigger === (k === 'low') ? '撮影のきっかけ：' : '') + WAVE_TEXT[k];
+  const det = S.ov?.candidate_detector || (S.mode === 'live' ? 'LOWFREQ_FOREST_RATIO_OR_B2' : 'B2_guarded_mad');
+  const trigger = det === 'LOWFREQ_FOREST_RATIO_OR_B2' || (det === 'LOWFREQ_FOREST_RATIO') === (k === 'low');
+  return (trigger ? '撮影のきっかけ：' : '') + WAVE_TEXT[k];
 }});
 function waveSeries() { return S.wave === 'low' && S.ov?.lowfreq?.t?.length ? S.ov.lowfreq : S.ov?.band; }
 function waveLog() { return S.wave === 'low' && !!S.ov?.lowfreq?.t?.length; }

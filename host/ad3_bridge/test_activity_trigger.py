@@ -65,6 +65,30 @@ class ActivityTriggerTest(unittest.TestCase):
         self.assertEqual(trigger.busy[-1][1], 44.0 + at.SETTLE_AFTER_BUSY_S)
         self.assertGreater(trigger.summary()['masked_windows'], 0)
 
+    def test_b2_starts_a_trigger_unless_busy_or_inside_a_span(self):
+        values = signal(60, [(40, 43, 3e-4)])
+        trigger = at.ActivityTrigger(b2_config_sha256='c' * 64)
+        b2 = lambda t: dict(t_start_s=t, confirmed_at_s=t + .1, peak_rms_V=1e-4, peak_score=6.0,
+                            quality='DEVELOPMENT_CANDIDATE')
+        events = feed(trigger, values[:int(20 * FS)])
+        events += trigger.push(values[int(20 * FS):int(20.5 * FS)], [b2(20.1), dict(b2(20.3), quality='INCOMPLETE')])
+        [first] = [e for e in events if 19 <= e['t_start_s'] <= 21]
+        self.assertEqual((first['detector'], first['triggered_by'], first['b2_t_start_s']), (at.B2_DETECTOR, ['B2'], 20.1))
+        self.assertEqual(candidate_payload('a' * 32, 1, first, trigger.fingerprint).count(' '), 6)  # B2 7-token form
+        # a second B2 within MERGE_GAP_S of the span extends it instead of triggering again
+        self.assertEqual(trigger.push(values[int(20.5 * FS):int(21 * FS)], [b2(20.6)]), [])
+        trigger.busy_begin(22.0)
+        later = feed(trigger, values[int(21 * FS):int(25 * FS)]) + trigger.push(values[int(25 * FS):int(25.2 * FS)], [b2(25.0)])
+        self.assertEqual(later, [])
+        self.assertEqual((trigger.b2_used, trigger.b2_masked), (1, 1))
+        # the 1-40 Hz path still triggers by itself after the episode, as LOWFREQ_FOREST_RATIO
+        trigger.busy_end(26.0)
+        rest = feed(trigger, values[int(25.2 * FS):])
+        self.assertTrue(any(e['detector'] == at.DETECTOR and 39.5 <= e['t_start_s'] <= 41 for e in rest))
+        summary = trigger.summary()
+        self.assertEqual((summary['detector'], summary['b2_triggers']), (at.TRIGGER, 1))
+        self.assertNotEqual(trigger.fingerprint, at.ActivityTrigger().fingerprint)  # B2 config is part of it
+
     def test_wire_payload_names_the_detector(self):
         trigger = at.ActivityTrigger()
         event = dict(t_start_s=20.0, t_end_s=20.25, peak_rms_V=3e-5, peak_score=3.4,
