@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Comparison snapshot of /demo at commit 9a4a871 (2026-11-20, before the UI directive changes). Delete with host/web/demo_prev/ and demo_prev.css when no longer needed. -->
+<link rel="stylesheet" href="/static/demo_prev.css">
+<!-- Material Symbols (Google Fonts, Apache License 2.0). Offline, the icons are hidden (demo/main.js). -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block">
+<title>Beetle Life Lab · デモ再生（前の版・比較用）</title>
+</head>
+<body>
+<div id="viewport">
+<div id="stage" aria-label="デモ画面（1920×1080）">
+ <header class="top">
+  <div class="brand"><b><span class="ms" aria-hidden="true">grass</span>Beetle Life Lab</b><span>見えないなら、観測方法を変える。</span></div>
+  <ol id="nav" class="nav"></ol>
+  <div class="mode"><span class="replay" id="replayTag"><span class="ms" aria-hidden="true">replay</span>観測記録の再生（同期リプレイ）</span><span class="replay livetag" id="liveTag" hidden><span class="ms" aria-hidden="true">radio_button_checked</span>LIVE（実機・リアルタイム）</span><span id="clock" class="clock">—</span></div>
+ </header>
+ <section class="middle">
+  <div class="video" id="videoBox"><div class="vwrap" id="vwrap"><video id="video" muted playsinline preload="auto"></video></div>
+   <div class="novideo" id="noVideo" hidden>この記録には外部カメラの動画がありません</div>
+   <span class="vlabel"><span class="ms" aria-hidden="true">videocam</span><span id="vlabelText">実機の映像（記録の動画・OBS）</span></span>
+   <span class="armstate" id="armState" hidden></span></div>
+  <aside class="side">
+   <div class="panel wave"><h2><span class="ms" aria-hidden="true">graphic_eq</span>振動の手がかり <small id="waveLabel">ケース内ピエゾ CH2 の 1–40 Hz 低周波の振幅（RMS 250 ms、対数）</small></h2><canvas id="wave" width="760" height="300"></canvas>
+    <div class="legend"><span class="in">ケースの中</span><span class="out">ケースの外（参照）</span><span class="cand">振動候補の区間</span><span class="arm">アームの動作</span><span class="low">低周波の活動らしさ（PC参考・暫定）</span></div></div>
+   <div class="panel shot"><h2><span class="ms" aria-hidden="true">photo_camera</span>撮影した画像 <small>Vision V2（240×240）・実機映像とは別のカメラ</small></h2>
+    <div class="shotrow"><div class="big"><img id="shotImg" alt="" hidden><span id="shotAi" class="aibadge" hidden></span><div id="shotEmpty" class="empty"><span class="ms" aria-hidden="true">no_photography</span>まだ撮影していません</div><span id="shotCap" class="cap"></span></div>
+     <div class="views" id="views"></div></div></div>
+  </aside>
+ </section>
+ <section class="bottom">
+  <div class="card clue"><h3><span class="ms" aria-hidden="true">sensors</span>見つけた手がかり</h3><div class="main"><span class="ms big" id="clueIcon" aria-hidden="true"></span><span id="clueMain"></span></div><div class="sub" id="clueSub"></div><div class="sub lowline" id="clueLow" hidden></div></div>
+  <div class="card why"><h3><span class="ms" aria-hidden="true">lightbulb</span>なぜそうした？</h3><div class="main"><span class="ms big" id="whyIcon" aria-hidden="true"></span><span id="whyMain"></span></div><div class="sub" id="whySub"></div></div>
+  <div class="card result"><h3><span class="ms" aria-hidden="true">task_alt</span>どうなった？</h3><div class="main"><span class="ms big" id="resultIcon" aria-hidden="true"></span><span id="resultMain"></span></div><div class="sub" id="resultSub"></div></div>
+ </section>
+ <footer class="foot" id="foot"></footer>
+</div>
+</div>
+<div id="controls" class="controls">
+ <label>映像 <select id="mode"><option value="replay" selected>記録の再生（同期リプレイ）</option><option value="live">実機のライブ（LIVE）</option></select></label>
+ <label class="livectl">カメラ <select id="camera"></select></label>
+ <span class="replayctl">
+ <label>記録 <select id="run"></select></label>
+ <label>場面 <select id="episode"></select></label>
+ <button id="prev" type="button" title="前の場面">◀</button><button id="next" type="button" title="次の場面">▶</button>
+ <button id="play" type="button">▶ 再生</button><button id="rewind" type="button">先頭へ</button>
+ <label title="振動グラフに表示する帯域">振動グラフ <select id="waveSel"><option value="low">1–40 Hz</option><option value="band">300–1500 Hz</option></select></label>
+ <label>速度 <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+ <input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置">
+ <label title="動画の音（人の声が入るため初期は消音）"><input id="sound" type="checkbox">音を出す</label>
+ </span>
+ <button id="rec" type="button" title="操作バーを隠します。H キーで戻ります">収録モード</button>
+ <button id="full" type="button">全画面</button>
+ <a href="/diary">観察日記</a> <a href="/episodes">観察エピソード</a> <a href="/review" id="toReview">振り返り</a> <b style="color:#f29b38">前の版（9a4a871）</b> <a href="/demo" id="toOther">最新版を開く</a>
+ <span id="error" role="alert"></span>
+</div>
+<script src="/observation_view.js"></script>
+<script type="module" src="/static/demo_prev/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bll:evidence:v1:diagnostic-passive-clock-observation",
+  "title": "bll.evidence.v1 diagnostics, passive candidates, PC clock references and observation decisions",
+  "description": "BOOT, DEVICE_DIAGNOSTIC, LIVE PC AD3 vibration candidates, estimated PC UTC references, rule-based POLICY_DECISION intents and OBSERVATION_ACTION_RESULT outcomes. Never confirms animal presence or movement. Cross-event clock arithmetic, intent/result pairing and the 2048-byte line limit are validated outside JSON Schema.",
+  "type": "object",
+  "required": ["schema_version","device_id","boot_id","seq","event_id","stream_id","origin","source","timestamp_utc","time_quality","monotonic_ms","event_type","quality","result","case_id","session_id","observation_id","request_id","image_ref","producer_version","model_version"],
+  "properties": {
+    "schema_version": {"const": "bll.evidence.v1"},
+    "device_id": {"type": "string", "pattern": "^(xiao|nano)-[0-9a-f]{12}$"},
+    "boot_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "seq": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+    "event_id": {"type": "string", "maxLength": 100},
+    "stream_id": {"type": "string", "pattern": "^live/(xiao|nano)-[0-9a-f]{12}$"},
+    "origin": {"const": "LIVE"}, "source": {"enum": ["XIAO","PC_AD3","PC_CLOCK"]},
+    "timestamp_utc": {"type": ["null","string"]}, "time_quality": {"enum": ["UNSYNCED","ESTIMATED"]},
+    "clock_sync_event_id": {"type":"string","pattern":"^(xiao|nano)-[0-9a-f]{12}/[0-9a-f]{32}/[1-9][0-9]*$"},
+    "monotonic_ms": {"type": "integer", "minimum": 0},
+    "event_type": {"enum": ["BOOT","DEVICE_DIAGNOSTIC","PASSIVE_VIBRATION_CANDIDATE","TIME_SYNC","POLICY_DECISION","OBSERVATION_ACTION_RESULT"]},
+    "quality": {"type": "object", "required": ["valid","reason_codes"], "properties": {"valid":{"const":true},"reason_codes":{"type":"array","maxItems":0}}},
+    "result": {"type":"object","required":["scope"],"properties":{"scope":{"enum":["DEVICE_DIAGNOSTIC_ONLY","PASSIVE_CANDIDATE_ONLY","CLOCK_REFERENCE_ONLY","OBSERVATION_POLICY","OBSERVATION_ACTION"]}}},
+    "case_id": {"type":"null"}, "session_id": {"type":"null"},
+    "observation_id": {"type":["null","string"],"maxLength":47}, "request_id": {"type":"null"},
+    "image_ref": {"type":["null","object"]}, "model_version": {"type":"null"},
+    "producer_version": {"type":"string"}
+  },
+  "$defs": {
+    "action": {"enum": ["WAIT","CAPTURE_FIXED","CAPTURE_FRONT","CAPTURE_TOP","CAPTURE_BACK"]},
+    "pose": {"enum": ["FIXED","FRONT","TOP","BACK"]},
+    "text47": {"type":"string","minLength":1,"maxLength":47},
+    "text99": {"type":"string","minLength":1,"maxLength":99}
+  },
+  "allOf": [{
+    "if": {"properties":{"event_type":{"const":"PASSIVE_VIBRATION_CANDIDATE"}}},
+    "then": {"properties":{
+      "source":{"const":"PC_AD3"},"observation_id":{"type":"null"},"image_ref":{"type":"null"},
+      "result":{
+        "required":["scope","detector","source_run_id","candidate_seq","source_start_ms","source_end_ms","peak_rms_uV","peak_score_milli","config_sha256","source_time_quality","clipping_verified"],
+        "properties":{
+          "scope":{"const":"PASSIVE_CANDIDATE_ONLY"},"detector":{"enum":["B2_guarded_mad","LOWFREQ_FOREST_RATIO"]},
+          "source_run_id":{"type":"string","pattern":"^[0-9a-f]{32}$"},
+          "config_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+          "candidate_seq":{"type":"integer","minimum":1,"maximum":1000000},
+          "source_start_ms":{"type":"integer","minimum":0,"maximum":4294967295},
+          "source_end_ms":{"type":"integer","minimum":1,"maximum":4294967295},
+          "peak_rms_uV":{"type":"integer","minimum":1,"maximum":50000000},
+          "peak_score_milli":{"type":"integer","minimum":1,"maximum":1000000000,"description":"B2_guarded_mad: score x1000, >= 4000 (validated in code). LOWFREQ_FOREST_RATIO (0.17.0): CH2 1-40 Hz ratio x1000, >= 1."},
+          "source_time_quality":{"const":"SAMPLE_CLOCK_ONLY"},"clipping_verified":{"const":false}
+        }
+      }
+    }}
+  },{
+    "if": {"properties":{"event_type":{"const":"TIME_SYNC"}}},
+    "then":{"properties":{"source":{"const":"PC_CLOCK"},"time_quality":{"const":"ESTIMATED"},
+      "observation_id":{"type":"null"},"image_ref":{"type":"null"},"result":{
+      "required":["scope","utc_unix_ms","device_monotonic_ms","transport_uncertainty_ms","pc_clock_accuracy","sync_id"],
+      "properties":{
+        "scope":{"const":"CLOCK_REFERENCE_ONLY"},"pc_clock_accuracy":{"const":"UNVERIFIED"},
+        "utc_unix_ms":{"type":"integer","minimum":1577836800000,"maximum":4102444799999},
+        "device_monotonic_ms":{"type":"integer","minimum":0},
+        "transport_uncertainty_ms":{"type":"integer","minimum":1,"maximum":501},
+        "sync_id":{"type":"string","pattern":"^[0-9a-f]{32}$"}
+      }
+    }}}
+  },{
+    "if": {"properties":{"event_type":{"enum":["BOOT","DEVICE_DIAGNOSTIC"]}}},
+    "then": {"properties":{"source":{"const":"XIAO"},"observation_id":{"type":"null"},"image_ref":{"type":"null"},
+      "result":{"properties":{"scope":{"const":"DEVICE_DIAGNOSTIC_ONLY"}}}}}
+  },{
+    "if": {"properties":{"event_type":{"const":"POLICY_DECISION"}}},
+    "then": {"properties":{"source":{"const":"XIAO"},"image_ref":{"type":"null"},"result":{
+      "required":["scope","kind","policy_version","reducer_version","decision_id","action","action_id","target_pose","caused_by_event_ids","reason_codes","constraints","capabilities","config"],
+      "properties":{
+        "scope":{"const":"OBSERVATION_POLICY"},"kind":{"const":"RULE_BASED_NOT_TRAINED"},
+        "policy_version":{"type":"string","minLength":1,"maxLength":40},
+        "reducer_version":{"type":"string","minLength":1,"maxLength":40},
+        "decision_id":{"$ref":"#/$defs/text47"},
+        "action":{"$ref":"#/$defs/action"},
+        "action_id":{"oneOf":[{"type":"null"},{"$ref":"#/$defs/text47"}]},
+        "target_pose":{"oneOf":[{"type":"null"},{"$ref":"#/$defs/pose"}]},
+        "caused_by_event_ids":{"type":"array","minItems":1,"maxItems":1,"items":{"$ref":"#/$defs/text99"}},
+        "reason_codes":{"type":"array","minItems":1,"maxItems":16,"items":{"type":"string","minLength":1,"maxLength":40}},
+        "constraints":{"type":"object","required":["live_mode","storage_writable","safety_ok","device_busy","light","light_source"],
+          "properties":{"light":{"enum":["OK","LOW","UNKNOWN"]},"light_source":{"enum":["NO_SENSOR","OPERATOR_DECLARED"]}}},
+        "capabilities":{"type":"array","items":{"$ref":"#/$defs/pose"}},
+        "config":{"type":"object"}
+      }}},
+      "if":{"properties":{"result":{"properties":{"action":{"const":"WAIT"}}}}},
+      "then":{"properties":{"observation_id":{"type":"null"},"result":{"properties":{"action_id":{"type":"null"},"target_pose":{"type":"null"}}}}},
+      "else":{"properties":{"observation_id":{"$ref":"#/$defs/text47"},"result":{"properties":{"action_id":{"$ref":"#/$defs/text47"},"target_pose":{"$ref":"#/$defs/pose"}}}}}
+    }
+  },{
+    "if": {"properties":{"event_type":{"const":"OBSERVATION_ACTION_RESULT"}}},
+    "then": {"properties":{"source":{"const":"XIAO"},"observation_id":{"$ref":"#/$defs/text47"},"result":{
+      "required":["scope","action_id","decision_event_id","status","action","pose","capture"],
+      "properties":{
+        "scope":{"const":"OBSERVATION_ACTION"},
+        "action_id":{"$ref":"#/$defs/text47"},"decision_event_id":{"$ref":"#/$defs/text99"},
+        "status":{"enum":["COMPLETED","FAILED","INTERRUPTED"]},
+        "action":{"enum":["CAPTURE_FIXED","CAPTURE_FRONT","CAPTURE_TOP","CAPTURE_BACK"]},
+        "pose":{"$ref":"#/$defs/pose"},
+        "capture":{"type":"object","required":["status","reason","presence","movement"],"properties":{
+          "status":{"enum":["SUCCESS","FAILED","NOT_ATTEMPTED","UNKNOWN"]},
+          "reason":{"type":"string","minLength":1,"maxLength":40},
+          "presence":{"const":"UNKNOWN"},"movement":{"const":"UNKNOWN"}
+        }},
+        "vision":{"type":"object","required":["top_class_id","score","larva_visible"],"description":"0.17.0: Vision model output of the captured image; larva_visible = top class VISIBLE_LARVA (id 1) with score >= 80, which ends the episode.","properties":{
+          "top_class_id":{"type":"integer","minimum":0,"maximum":255},"score":{"type":"integer","minimum":0,"maximum":100},
+          "larva_visible":{"type":"boolean"},"rule":{"type":"string","maxLength":60}
+        }}
+      }}},
+      "if":{"properties":{"result":{"properties":{"capture":{"properties":{"status":{"const":"SUCCESS"}}}}}}},
+      "then":{"properties":{"image_ref":{"type":"object","required":["store","status","payload_sha256","payload_bytes"],"properties":{
+        "store":{"const":"HOST_USB_STREAM"},"status":{"const":"SENT_TO_HOST_UNCONFIRMED"},
+        "payload_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"payload_bytes":{"type":"integer","minimum":1}
+      }}}},
+      "else":{"properties":{"image_ref":{"type":"null"}}},
+      "allOf":[
+        {"if":{"properties":{"result":{"properties":{"status":{"const":"COMPLETED"}}}}},
+         "then":{"properties":{"result":{"properties":{"capture":{"properties":{"status":{"const":"SUCCESS"}}}}}}}},
+        {"if":{"properties":{"result":{"properties":{"status":{"const":"FAILED"}}}}},
+         "then":{"properties":{"result":{"properties":{"capture":{"properties":{"status":{"enum":["FAILED","NOT_ATTEMPTED"]}}}}}}}},
+        {"if":{"properties":{"result":{"properties":{"status":{"const":"INTERRUPTED"}}}}},
+         "then":{"properties":{"result":{"properties":{"capture":{"properties":{"status":{"const":"UNKNOWN"}}}}}}}}
+      ]
+    }
+  },{
+    "if":{"properties":{"time_quality":{"const":"UNSYNCED"}}},
+    "then":{"properties":{"timestamp_utc":{"type":"null"}},"not":{"required":["clock_sync_event_id"]}},
+    "else":{"required":["clock_sync_event_id"],"properties":{"timestamp_utc":{"type":"string","format":"date-time","pattern":"^20[2-9][0-9]-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"}}}
+  }]
+}

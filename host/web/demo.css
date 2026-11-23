@@ -1,0 +1,240 @@
+/* デモ再生 /demo: a fixed 1920x1080 stage for recording the 3-minute video
+   (docs/Beetle_Life_Lab_ProtoPedia_Presentation_Design_20261115.md §5, §7.5).
+   Calm dark overlay; observe/evidence = teal, decide/act = orange, done = green, unknown/wait = grey. */
+:root{color-scheme:dark;--bg:#0c171b;--panel:#12232a;--panel2:#173039;--line:#24424c;--ink:#eaf2f0;--muted:#93a8a6;
+ --observe:#3cc4b4;--act:#f29b38;--done:#62c97a;--wait:#8d9b9a;--in:#3cc4b4;--out:#d9b25c;--cand:rgba(242,155,56,.18);--arm:rgba(160,170,170,.28);--low:#9db4ff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#050a0c;color:var(--ink);font-family:system-ui,"Yu Gothic UI","Yu Gothic","Hiragino Sans",sans-serif;overflow:hidden}
+#viewport{position:fixed;inset:0 0 56px 0;display:flex;align-items:center;justify-content:center}
+body.rec #viewport{bottom:0}
+#stage{width:1920px;height:1080px;flex:none;background:var(--bg);transform-origin:center center;display:grid;
+ grid-template-rows:118px 1fr 210px 40px;gap:16px;padding:18px 28px 10px}
+/* top: brand, 6-step navigator, replay tag */
+.top{display:grid;grid-template-columns:230px 1fr 290px;gap:18px;align-items:center}
+.brand b{display:block;white-space:nowrap;font-size:26px;letter-spacing:-.01em}
+.brand span{font-size:15px;color:var(--muted)}
+.nav{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.nav li{position:relative;height:96px;border:2px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--panel);opacity:.55;transition:all .25s}
+.nav li:not(:last-child)::after{content:"›";position:absolute;right:-12px;top:28px;font-size:28px;color:var(--muted);z-index:1}
+.nav li .n{font-size:15px;font-weight:800;color:var(--muted)}
+.nav li .l{display:block;white-space:nowrap;font-size:19px;font-weight:800;line-height:1.25;margin-top:2px}
+.nav li .t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;color:var(--muted);margin-top:4px}
+.nav li.on{opacity:1;transform:translateY(-2px)}
+.nav li.on.observe{border-color:var(--observe);background:#0f3a3a;box-shadow:0 0 0 3px rgba(60,196,180,.25)}
+.nav li.on.act{border-color:var(--act);background:#41301a;box-shadow:0 0 0 3px rgba(242,155,56,.25)}
+.nav li.on.done{border-color:var(--done);background:#183b24;box-shadow:0 0 0 3px rgba(98,201,122,.25)}
+.nav li.on.wait{border-color:var(--wait);background:#2a3434;box-shadow:0 0 0 3px rgba(141,155,154,.25)}
+.nav li.on .n{color:var(--ink)}
+/* finished stages of this decide cycle: quiet check mark; current: outline + "いま" (not colour only) */
+.nav li.past{opacity:.8;border-style:dashed}
+.nav li.past .n::after{content:" ✓ 済";color:var(--done);font-weight:700}
+.nav li.on .n::after{content:" ▶ いま";color:var(--ink);font-weight:800}
+.nav li.on .l{text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:2px}
+.nav li .badge{position:absolute;right:10px;top:8px;font-size:13px;font-weight:800;padding:1px 8px;border-radius:9px;background:var(--wait);color:#111}
+.mode{text-align:right}
+.replay{display:inline-block;white-space:nowrap;font-size:15px;font-weight:700;padding:5px 12px;border-radius:9px;border:1px solid var(--muted);color:var(--ink)}
+.clock{display:block;white-space:nowrap;margin-top:8px;font-size:18px;font-variant-numeric:tabular-nums;color:var(--muted)}
+/* middle: real machine video + clues */
+.middle{display:grid;grid-template-columns:1fr 800px;gap:18px;min-height:0;position:relative}
+/* state-transition overlay (click the navigator) */
+.nav{cursor:pointer}
+.flow{position:absolute;inset:0;z-index:5;background:#0a171b;border:2px solid var(--line);border-radius:16px;display:flex;flex-direction:column;padding:12px 18px}
+.flow[hidden]{display:none}
+.fhead{display:flex;align-items:center;gap:22px;font-size:22px}
+.fhead b{display:flex;align-items:center;gap:8px}
+.flegend{font-size:15px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.flegend i{display:inline-block;width:22px;height:12px;border-radius:4px;margin-left:10px}
+.flegend .lcur{background:#f2c14e}.flegend .lseen{background:#2f6d66}.flegend .lnone{background:#1d3138;border:1px solid #3a5a60}
+#flowClose,#flowDock{font-size:26px;line-height:1;padding:2px 14px;border-radius:10px;border:1px solid var(--line);background:#182c33;color:var(--ink);cursor:pointer}
+#flowClose{margin-left:auto}
+.fclock{display:none;font-size:17px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+/* docked layout (the ↓ button): title row, cards and footnote hidden; video and panels move up and
+   the state diagram fills the freed space below them */
+body.flowdock .top,body.flowdock .bottom,body.flowdock .foot{display:none}
+body.flowdock #stage{grid-template-rows:minmax(0,1fr) 480px}
+body.flowdock .flow{position:relative;inset:auto;z-index:auto}
+body.flowdock .fclock{display:inline}
+body.flowdock .fbody{grid-template-columns:minmax(0,1fr) 330px 560px}
+body.flowdock .fbody .panel.memory{display:flex;border-color:var(--line);box-shadow:none;margin:0}
+body.flowdock .fbody .panel.memory h2 small{display:block;margin:2px 0 0}
+body.flowdock .finfo{padding:12px 14px}
+body.flowdock .fnow{font-size:24px}
+/* docked memory column: one card per line, name and value side by side */
+body.flowdock .fbody .mstate{grid-template-columns:1fr}
+body.flowdock .fbody .mcard{flex-direction:row;flex-wrap:wrap;align-items:baseline;column-gap:10px}
+body.flowdock .fbody .mcard b{min-width:58px}
+body.flowdock .fbody .mbody{grid-template-columns:1.05fr 1fr}
+/* the photo panel is shorter when docked: compact view rows */
+body.flowdock .views{gap:4px;--t:min(calc((100cqh - 8px) / 3 - 8px), calc(100cqw * .55))}
+body.flowdock .view{padding:2px 8px;gap:8px}
+body.flowdock .view b{font-size:16px}
+body.flowdock .view small{font-size:12px}
+body.flowdock .panel h2{font-size:17px;margin-bottom:4px}
+body.flowdock .aibadge{font-size:15px;padding:4px 9px;top:6px;left:6px}
+.fbody{flex:1;min-height:0;display:grid;grid-template-columns:1fr 430px;gap:18px}
+#flowSvg{width:100%;height:100%}
+.fnode{cursor:pointer}
+.fnode rect,.fnode polygon{fill:#152a31;stroke:#3a5a60;stroke-width:2.5}
+.fnode .nlabel{fill:#93a8a6;font-size:22px;font-weight:800}
+.fnode .nsub{fill:#6f8584;font-size:13.5px}
+.fnode .ncount{fill:#f2c14e;font-size:17px;font-weight:800}
+.fnode.seen rect,.fnode.seen polygon{fill:#173c38;stroke:#2f8f84}
+.fnode.seen .nlabel{fill:#d5e6e3}
+.fnode.cur rect,.fnode.cur polygon{fill:#4a3a12;stroke:#f2c14e;stroke-width:5}
+.fnode.cur .nlabel{fill:#fff3cf}.fnode.cur .nsub{fill:#e9d7a5}
+.fnode.wait.cur rect{fill:#333c3c;stroke:#c9d2d1}
+.fnode:hover rect,.fnode:hover polygon,.fnode:focus rect,.fnode:focus polygon{stroke:#9fd8cf}
+.fedge polyline{fill:none;stroke:#3a5a60;stroke-width:3}
+.fedge .elabel{fill:#8aa2a0;font-size:16px;font-weight:700}
+.fedge.seen polyline{stroke:#2f8f84;stroke-width:4}
+.fedge.cur polyline{stroke:#f2c14e;stroke-width:6;stroke-dasharray:14 8;animation:fdash 1s linear infinite}
+.fedge.cur .elabel,.fedge.seen .elabel{fill:#f2e2b0}
+@keyframes fdash{to{stroke-dashoffset:-22}}
+.finfo{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.fnow{font-size:28px;font-weight:800;color:#fff3cf}
+.ftext{font-size:18px;line-height:1.5}
+.fwhy{font-size:17px;line-height:1.5;color:var(--act);white-space:pre-line}
+.fcount{font-size:16px;color:var(--muted);white-space:pre-line}
+.fnote{margin-top:auto;font-size:13px;color:var(--muted);line-height:1.5}
+/* memory: Evidence history + state rebuilt from it (right-top panel around a decision, and ②③ of the diagram) */
+.panel.memory{display:none}
+.side.mem .panel.wave{display:none}
+.side.mem .panel.memory{display:flex;border-color:var(--observe);box-shadow:0 0 0 3px rgba(60,196,180,.22)}
+.mbody{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mhist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;justify-content:flex-start;gap:4px;min-height:0;overflow:hidden}
+.panel.memory .mbody{overflow:hidden}
+.mnote{flex:none}
+.finfo{overflow:auto}
+.mhist li{display:grid;grid-template-columns:62px 22px 1fr auto;align-items:center;gap:6px;font-size:15px;padding:3px 8px;border-radius:8px;background:var(--panel2);color:#cfe0dd}
+.mhist li .mt{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mhist li .ms{font-size:18px;color:var(--observe)}
+.mhist li.decide .ms,.mhist li.wait .ms{color:var(--act)}
+.mhist li.now{outline:2px solid #f2c14e;color:#fff3cf}
+.mhist li .saved{font-size:12px;padding:1px 7px;border-radius:7px;background:var(--done);color:#0c1f12}
+.mhist li.empty{display:block;color:var(--muted)}
+.mstate{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start}
+.mcard{border:1px solid var(--line);border-radius:10px;padding:5px 9px;background:var(--panel2);display:flex;flex-direction:column;gap:1px}
+.mcard b{font-size:14px;color:var(--muted)}
+.mcard .mv{font-size:15.5px;font-weight:700}
+.mcard .mtag{font-size:13px;color:#f2c14e;font-weight:700}
+.mcard.used{border-color:#f2c14e;background:#2f2a14}
+.mcard.key{border-width:2px;box-shadow:0 0 0 3px rgba(242,193,78,.25)}
+.mnote{font-size:12.5px;color:var(--muted);margin-top:6px}
+.fmem .mbody{display:flex;flex-direction:column;gap:10px}
+.fmem .mhist li{font-size:13.5px;grid-template-columns:54px 20px 1fr auto}
+.fmem .mcard .mv{font-size:14px}
+/* compact cards when docked and in the diagram's detail */
+body.flowdock .mcard,.fmem .mcard{padding:2px 8px;gap:0}
+body.flowdock .mcard b,.fmem .mcard b{font-size:12px}
+body.flowdock .mcard .mv,.fmem .mcard .mv{font-size:13.5px}
+body.flowdock .mcard .mtag,.fmem .mcard .mtag{font-size:12px}
+body.flowdock .mhist li{font-size:13.5px;padding:2px 8px}
+body.flowdock .mstate,.fmem .mstate{gap:4px}
+.video{position:relative;border-radius:16px;overflow:hidden;background:#000;border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+.vwrap{position:relative;overflow:hidden;width:100%;max-height:100%;aspect-ratio:16/9}
+.vwrap video{position:absolute;left:0;top:0;width:100%;height:auto}
+.novideo{color:var(--muted);font-size:22px}
+.vlabel{position:absolute;left:14px;top:12px;font-size:15px;padding:3px 10px;border-radius:8px;background:rgba(0,0,0,.6)}
+.armstate{position:absolute;left:14px;bottom:14px;font-size:24px;font-weight:800;padding:6px 16px;border-radius:12px;background:rgba(65,48,26,.92);border:2px solid var(--act)}
+.side{display:grid;grid-template-rows:1fr 1fr;gap:16px;min-height:0}
+.panel{overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 16px;min-height:0;display:flex;flex-direction:column}
+.panel h2{margin:0 0 6px;font-size:20px}
+.panel h2 small{font-size:13px;color:var(--muted);font-weight:500;margin-left:8px}
+.panel canvas{width:100%;flex:1;min-height:0}
+.legend{display:flex;gap:18px;font-size:13px;color:var(--muted);margin-top:4px}
+.legend span::before{content:"";display:inline-block;width:18px;height:8px;border-radius:3px;margin-right:6px;vertical-align:middle}
+.legend .in::before{background:var(--in)}.legend .out::before{background:var(--out)}.legend .cand::before{background:var(--cand);outline:1px solid var(--act)}.legend .arm::before{background:var(--arm)}.legend .low::before{background:var(--low)}
+.card .lowline{color:var(--low);margin-top:4px}
+.shotrow{display:grid;grid-template-columns:auto 1fr;gap:16px;flex:1;min-height:0}
+.shot .big{aspect-ratio:1/1;height:100%}
+.shot .big{position:relative;border-radius:12px;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.shot .big img{width:100%;height:100%;object-fit:contain;image-rendering:auto}
+.shot .big .empty{color:var(--muted);font-size:17px}
+.shot .cap{position:absolute;left:0;right:0;bottom:0;padding:4px 10px;font-size:14px;background:rgba(0,0,0,.65)}
+.aibadge{position:absolute;top:10px;left:10px;padding:6px 12px;border-radius:10px;font-size:19px;font-weight:800;background:rgba(20,30,34,.85);color:#cfe0dd;border:2px solid #5d7a78}
+.aibadge.seen{background:rgba(26,90,52,.92);color:#eaffef;border-color:var(--done)}
+.view b small.st{display:inline;font-size:13px;font-weight:500;margin-left:8px;color:var(--muted)}
+.view small.res{display:flex;gap:12px;flex-wrap:wrap;margin-top:2px}
+.view .ai{color:#cfe0dd}.view .ai.seen{color:var(--done);font-weight:700}
+.card .sub.ai{color:var(--ink)}.card .sub.ai.seen{color:var(--done);font-weight:700}
+/* human labels: own colour and heading, apart from the image AI */
+.card .sub.human,.view .human{color:#f2c6ff}
+.card .tech{font-size:12px;color:var(--muted);opacity:.75;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.rec .card .tech{display:none}
+body.rec .controls{display:none}
+/* spotlight: the photo panel takes the whole right column for a few seconds */
+.side.spot{grid-template-rows:1fr}
+.side.spot .panel.wave{display:none}
+.side.spot .panel.shot{border-color:var(--done);box-shadow:0 0 0 3px rgba(98,201,122,.3)}
+.spotlabel{display:none;position:absolute;right:10px;top:10px;font-size:14px;padding:3px 9px;border-radius:8px;background:rgba(0,0,0,.6)}
+.side.spot .spotlabel{display:block}
+.side.spot .shotrow{grid-template-columns:minmax(0,1fr) 270px}
+.side.spot .shot .big{max-width:100%}
+/* view rows share the panel height; each square thumbnail is as tall as its row (2026-11-22).
+   --t = (column height - 2 gaps) / 3 rows - row padding and border, capped so the text keeps room */
+.views{display:flex;flex-direction:column;gap:8px;min-height:0;min-width:0;container-type:size;
+  --t:min(calc((100cqh - 16px) / 3 - 12px), calc(100cqw * .55))}
+.view{flex:1 1 0;min-height:0;display:grid;grid-template-columns:var(--t) minmax(0,1fr);gap:12px;align-items:center;padding:4px 10px;border-radius:12px;border:2px solid var(--line);background:var(--panel2)}
+.views:has(.view:nth-child(4)){--t:min(calc((100cqh - 24px) / 4 - 12px), calc(100cqw * .55))} /* + fixed camera */
+body.flowdock .views:has(.view:nth-child(4)){--t:min(calc((100cqh - 12px) / 4 - 8px), calc(100cqw * .55))}
+.view img,.view .ph{width:var(--t);height:var(--t);border-radius:8px;object-fit:cover;background:#081013}
+.view b{font-size:20px}
+.view small{display:block;font-size:13px;color:var(--muted)}
+.view.now{border-color:var(--act)}
+.view.ok{border-color:var(--done)}
+.view.fail small{color:#f0a089}
+/* bottom: clue / why / result */
+.bottom{display:grid;grid-template-columns:1fr 1.15fr 1.15fr;gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 20px;border-top:6px solid var(--observe);min-width:0}
+.card.why{border-top-color:var(--act)}.card.result{border-top-color:var(--done)}
+.card h3{margin:0 0 6px;font-size:17px;color:var(--muted);letter-spacing:.06em}
+.card .main{font-size:28px;font-weight:800;line-height:1.3}
+.card .sub{font-size:15px;color:var(--muted);margin-top:8px;white-space:pre-line;line-height:1.5}
+.card.waiting{border-top-color:var(--wait)}
+.foot{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* control bar (outside the stage; hidden in recording mode) */
+.controls{position:fixed;left:0;right:0;bottom:0;height:56px;display:flex;gap:10px;align-items:center;padding:0 14px;background:#101c20;border-top:1px solid var(--line);font-size:14px;overflow-x:auto}
+body.rec .controls{display:none}
+.controls select,.controls button{font:inherit;padding:5px 10px;border-radius:8px;border:1px solid var(--line);background:#182c33;color:var(--ink);cursor:pointer}
+.controls select{max-width:340px}
+.controls #seek{flex:1;min-width:120px}
+.controls a{color:var(--observe);white-space:nowrap}
+.controls label{white-space:nowrap}
+#error{color:#f0a089}
+/* icons: Material Symbols Rounded (Google Fonts, Apache 2.0); hidden when the font cannot load */
+.ms{font-family:"Material Symbols Rounded";font-weight:500;font-style:normal;font-size:1.15em;line-height:1;letter-spacing:normal;text-transform:none;
+ display:inline-block;white-space:nowrap;direction:ltr;vertical-align:-.2em;margin-right:.3em;font-feature-settings:"liga";-webkit-font-smoothing:antialiased;
+ font-variation-settings:"FILL" 0,"wght" 500,"GRAD" 0,"opsz" 24}
+body.noicons .ms{display:none}
+.brand b .ms{color:var(--done);font-size:1em}
+.nav li .ms.step{position:absolute;right:10px;top:6px;font-size:23px;margin:0;color:var(--muted)}
+.nav li.on.observe .ms.step{color:var(--observe)}.nav li.on.act .ms.step{color:var(--act)}.nav li.on.done .ms.step{color:var(--done)}.nav li.on.wait .ms.step{color:var(--wait)}
+.nav li.on .ms.step{font-variation-settings:"FILL" 1,"wght" 500,"GRAD" 0,"opsz" 24}
+.nav li .badge{top:auto;bottom:8px}
+.nav li .badge .ms{font-size:1em;margin-right:.15em}
+.panel h2 .ms{color:var(--observe)}
+.card h3 .ms{font-size:1.25em}
+.card.clue h3 .ms{color:var(--observe)}.card.why h3 .ms{color:var(--act)}.card.result h3 .ms{color:var(--done)}
+.card.why.waiting h3 .ms{color:var(--wait)}
+.card .main{display:flex;align-items:flex-start;gap:4px}
+.card .main .ms.big{font-size:38px;vertical-align:0;margin:0 6px 0 0;font-variation-settings:"FILL" 1,"wght" 500,"GRAD" 0,"opsz" 40}
+.card.clue .main .ms{color:var(--observe)}.card.why .main .ms{color:var(--act)}.card.result .main .ms{color:var(--done)}
+.card.why.waiting .main .ms{color:var(--wait)}
+.view b .ms{color:var(--observe)}
+.view.ok small .ms{color:var(--done)}.view.fail small .ms{color:#f0a089}.view.now small .ms{color:var(--act)}
+.shot .big .empty .ms{display:block;font-size:44px;margin:0 auto 6px;text-align:center}
+.armstate .ms{color:var(--act)}
+.vlabel .ms,.replay .ms{font-size:1.1em}
+/* source switch: recorded replay (default) / live camera + current bridge state */
+.controls .replayctl{display:contents}
+.controls .livectl{display:none}
+body.live .controls .replayctl{display:none}
+body.live .controls .livectl{display:inline}
+.replay.livetag{border-color:#e5534b;color:#ffd9d6;background:rgba(229,83,75,.15)}
+.replay.livetag .ms{color:#e5534b;animation:blink 1.6s ease-in-out infinite}
+@keyframes blink{50%{opacity:.35}}
+.replay[hidden]{display:none}
+.novideo{padding:0 40px;text-align:center}
+.controls button,.controls a{white-space:nowrap;flex:none}
+.controls select{max-width:260px}
+.controls #seek{min-width:80px}

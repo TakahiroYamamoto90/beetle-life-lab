@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/static/diary.css">
+<!-- Material Symbols (Google Fonts, Apache License 2.0). Offline, the icons are hidden (diary/main.js). -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block">
+<title>Beetle Life Lab · 観察日記</title>
+</head>
+<body>
+<header>
+ <div><div class="eyebrow">BEETLE LIFE LAB / DIARY</div><h1><span class="ms" aria-hidden="true">menu_book</span>観察日記</h1></div>
+ <nav><a href="http://127.0.0.1:8765/">観察ノート</a><a href="/">取得画面</a><a href="/episodes">観察エピソード</a><a href="/demo">デモ再生</a></nav>
+</header>
+<main>
+ <div class="bar">
+  <label>ケース <select id="case"></select></label>
+  <label><input type="checkbox" id="onlyLarva"> 人が「幼虫が見える」とした写真だけ表示</label>
+  <span id="info" class="muted"></span>
+ </div>
+ <div id="error" role="alert"></div>
+ <section class="summary" id="summary" hidden>
+  <div class="caseName" id="caseName"></div>
+  <div class="facts" id="facts"></div>
+ </section>
+ <p class="honest"><span class="ms" aria-hidden="true">info</span>この日記は、計測の記録を日付ごとに並べたものです。幼虫が動いたかどうかは判定していません（わからない）。写真の「人が確認」は、観察ノートで人が付けたラベルです。画像AIの推論は使っていません。</p>
+ <div id="days"></div>
+ <p><button id="more" type="button" hidden>さらに前の日を表示</button></p>
+</main>
+<script type="module" src="/static/diary/main.js"></script>
+</body>
+</html>

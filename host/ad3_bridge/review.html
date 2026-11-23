@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="bll-token" content="__TOKEN__">
+<title>Beetle Life Lab — AD3 振り返り</title>
+<link rel="stylesheet" href="/static/review.css">
+<h1>エピソードの振り返りと正解ラベル（ground truth）</h1>
+<p><a href="/">← 取得画面へ</a>　<a href="/episodes" id="toEpisodes">観察エピソード（使う人向けの見え方）</a></p>
+<p><small>保存済みの取得を見返して、人が判断した時刻に印を付けます。印は記録フォルダの <code>review_annotations.jsonl</code> に追記だけで保存し、原波形・特徴量・候補・取得中の印・MCUは変更しません。印は人の判断であり、幼虫活動の検出結果ではありません（判定は <b>UNKNOWN</b> のまま）。</small></p>
+<section>
+<label>記録 <select id="run"><option value="">読み込み中…</option></select></label> <button id="reload" type="button">一覧を更新</button>
+<span id="statusBox" hidden>　アノテーション <b id="statusTag" class="status"></b> <button id="statusBtn" type="button"></button></span>
+<br><small class="muted">アノテーションの状態: 【未着手】→ ラベル・取消・動画のずれを保存すると【作業中】→ 終わったら「アノテーション完了にする」で【完了】（取り消せます）。</small>
+<p id="runInfo" class="muted"></p><p id="error" role="alert"></p>
+</section>
+<section id="viewer" hidden>
+<div class="stick"><div class="cursorbar">
+<b>カーソル</b> <input id="cursor" type="number" step="0.01" min="0" value="0"> 秒
+<label>拡大幅 <select id="span"><option>1</option><option>2</option><option selected>5</option><option>10</option><option>30</option></select> 秒</label>
+<label>波形Y軸 <select id="yscale"><option value="auto">自動</option><option value="0.2">±0.2 mV</option><option value="1">±1 mV</option><option value="5">±5 mV</option><option value="20">±20 mV</option></select></label>
+<button id="play" type="button" title="カーソル位置から再生・停止（スペース または K キー）">▶ 再生</button><select id="rate" aria-label="再生速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+<span class="muted">スペース／K：再生・停止　← →：0.05秒（Shift併用で1秒）移動　全体グラフをダブルクリック：拡大グラフへ</span>
+<label title="振動イベント候補（B2）・スコア・低周波の帯（比・フォレスト）・並走の集計を隠し、動画と波形だけで正解ラベルを付けます。この状態で付けたラベルには blind=true が記録されます。"><input id="blind" type="checkbox">ブラインド（候補・低周波の帯を隠す）</label>
+<label id="showVideoWrap" hidden><input id="showVideo" type="checkbox" checked>動画の画像を表示</label>
+</div>
+<div id="videoPanel" class="vpanel" hidden><img id="frame" class="zoomable" title="クリックで拡大" alt="カーソル時刻の動画フレーム"><div id="playerWrap" class="vclip" hidden><video id="player" preload="metadata" playsinline></video></div>
+<div class="vside"><div id="frameInfo"></div>
+<div>動画時刻 ＝ AD3時刻 ＋ <input id="offset" type="number" step="0.01"> 秒
+<button type="button" data-d="-0.1">−0.1</button><button type="button" data-d="-0.01">−0.01</button><button type="button" data-d="0.01">＋0.01</button><button type="button" data-d="0.1">＋0.1</button>
+<button id="saveOffset" type="button">このずれを保存</button></div>
+<div id="offsetInfo" class="muted"></div>
+<small>同期タップの波形スパイクにカーソルを置き、画像で指が箱に当たる瞬間（または音声の縦線）と一致するまでずれを調整して保存します。動画・音声はPCの振り返り専用です。</small></div></div>
+<div id="shotPanel" class="shotpanel" hidden></div>
+</div>
+<div class="labels"><b>この時刻に正解ラベルを付ける</b> <span class="muted">（<b>Ctrl を押して</b>グラフをドラッグ＝範囲（幼虫活動・人工刺激・外乱）、クリック＝点（外乱・同期タップ）を付ける。<b>Ctrl なし</b>でドラッグ＝付けたラベルを直す：端の線は伸縮、範囲の内側は範囲ごと、点の線は点を移動。<b>右クリック</b>（または Delete キー）＝その位置のラベルを削除）</span><br>
+<button class="b-larva" data-kind="LARVA_START" type="button">幼虫活動 開始</button><button class="b-larva" data-kind="LARVA_END" type="button">幼虫活動 終了</button>
+<button class="b-dig" data-kind="DIG_START" type="button">人工刺激（掘削）開始</button><button class="b-dig" data-kind="DIG_END" type="button">人工刺激（掘削）終了</button>
+<button class="b-noise" data-kind="NOISE" type="button">外乱（声・物音）</button><button class="b-sync" data-kind="SYNC_TAP" type="button">同期タップ</button>
+<label>メモ <input id="note" maxlength="300" size="36" placeholder="動画で確認／音で判断 など"></label> <span id="saveStatus" class="muted"></span></div>
+<div class="legend"><span><i style="background:#c0392b"></i>対象センサー CH2（ケース内ピエゾ）</span><span><i style="background:#2e6fb7"></i>参照センサー CH1（外乱・自分の動きの監視）</span>
+<span class="detector"><i style="background:rgba(232,140,40,.35)"></i>振動イベント候補（B2）</span><span><i style="background:rgba(70,160,90,.35)"></i>幼虫活動（振り返り）</span>
+<span><i style="background:#2a9d8f"></i>動画の録画範囲（上端）</span><span class="detector"><i style="background:rgba(14,124,134,.85)"></i>低周波の活動らしさ（上端の帯・PC参考・暫定）</span><span class="detector"><i style="background:rgba(122,72,196,.9)"></i>同・フォレスト（その下の紫の帯・PC参考・暫定）</span><span class="detector"><i style="background:rgba(28,52,140,.95)"></i>同・フォレストを MCU が計算（紺の帯・取得中・参考）</span><span><i style="background:rgba(240,200,40,.45)"></i>人工掘削</span><span><i style="background:#8a4cab"></i>外乱（線＝点、薄紫＝範囲）</span><span><i style="background:#3f6fb5"></i>同期タップ</span><span><i style="background:rgba(60,60,60,.55)"></i>アーム動作中（MCUの記録・自動）</span><span>破線＝取得中に押した印（おおよその時刻）</span></div>
+<p id="blindNote" class="blindonly">ブラインド表示中：振動イベント候補（B2）・スコア・低周波の帯・並走の集計を隠しています。動画と波形だけで判断してください。ここで付けたラベルには「ブラインド」と記録されます。</p>
+<h3>全体：300–1500 Hz 帯域RMS（mV、対数、20 ms）</h3><canvas id="ovBand" class="ov"></canvas>
+<h3>全体：1–40 Hz 低周波の振幅（mV、対数、表示用）<small class="detector" style="font-weight:400;color:#0e7c86">　上端の青緑の帯＝低周波の活動らしさ（PC参考・暫定しきい値。検出ではなく、MCUには送りません。アーム動作中は除外、物音でも出ます）。その下の紫の帯＝同じ入力の小さなフォレスト（20本・深さ5、MCUに載る大きさ。11/18・11/19のラベルで学習した暫定版）。その下の紺の帯＝同じフォレストを取得中に MCU が計算した結果（ファームウェア 0.15.0 以降・参考）<span id="forestNote"></span></small></h3><canvas id="ovLow" class="ov"></canvas><div id="shadowNote" class="detector" style="font-size:12px;color:#555;margin:2px 0 6px"></div>
+<h3 class="detector">全体：観察のきっかけ ― フォレストの確率（対数、破線=しきい値）<small id="triggerSource" style="font-weight:400"></small></h3><canvas id="ovForestP" class="ov detector"></canvas>
+<h3 class="detector">全体：観察のきっかけ ― 低周波 1–40 Hz の比（CH2 ÷ 直前30秒の下位20%、対数、破線=3）</h3><canvas id="ovRatio" class="ov detector"></canvas>
+<h3 class="detector">全体：振動イベント検出スコア（B2、対数、破線=開始閾値4。2026-11-23 からは比較用で、観察のきっかけには使っていません）</h3><canvas id="ovScore" class="ov detector"></canvas>
+<div class="specBlock" hidden><h3>全体：動画の音声（周波数 40 Hz–16 kHz 対数・時間。明るいほど強い）<span class="specNote muted"></span></h3><canvas id="ovSpec" class="ov"></canvas></div>
+<div id="shotsBlock" hidden><h3>全体：能動観測（アームで視点を選んだ撮影。枠の色 F=FRONT 橙・T=TOP 緑・B=BACK 紫。破線枠は推定時刻。押すとその時刻へ）</h3><canvas id="ovShots" class="ov shots"></canvas></div>
+<h3>拡大：対象センサー CH2（ケース内ピエゾ）原波形（mV、最小・最大）</h3><canvas id="dCh2" class="detail"></canvas>
+<h3>拡大：参照センサー CH1（外乱・自分の動きの監視）原波形（mV、最小・最大）</h3><canvas id="dCh1" class="detail"></canvas>
+<div class="specBlock" hidden><h3>拡大：動画の音声（周波数・時間）<span class="specNote muted"></span></h3><canvas id="dSpec" class="detail"></canvas></div>
+</section>
+<section id="listSection" hidden>
+<div class="detector"><h3>振動イベント候補の外乱比（参考値） <button id="ctxCsv" type="button">CSVで保存</button></h3>
+<p><small>候補区間の帯域RMS（300–1500 Hz）が直前5秒の中央値の何倍か（対象センサー CH2＝ケース内ピエゾ、参照センサー CH1＝外乱・自分の動きの監視。外乱比＝CH1÷CH2）と、動画の音声（200–4000 Hz）が録画全体の静かな水準の何倍か。<b>参考値</b>で、検出・MCU・ラベルには使いません。しきい値は未確立です。行を押すとその時刻へ移動します。<br>
+「外乱らしさ（参考）」は、ケース内ピエゾ CH2 の低域（20–300 Hz）上昇・鋭さ（300–1500 Hz のピーク÷平均）・参照センサー CH1 の高域（1.5–5 kHz）上昇から出した目安です。2026-11-18 の13記録（box-04）に合わせた<b>暫定のしきい値</b>（低域×1.2 未満かつ鋭さ2.4 未満、または CH1高域×15 以上で「外乱らしい」）で、幼虫かどうかの判定ではありません。MCU への送信は変えません。</small></p>
+<div class="tablewrap"><table><thead><tr><th>#</th><th>区間（秒）</th><th>スコア</th><th>対象 CH2 上昇</th><th>参照 CH1 上昇</th><th>外乱比 CH1/CH2</th><th>外乱らしさ（参考）</th><th>音声 上昇</th><th>方策の行動（MCU）</th></tr></thead><tbody id="ctxRows"><tr><td colspan="9">—</td></tr></tbody></table></div></div>
+<div id="shotListWrap" hidden><h3>能動観測エピソードの一覧（アーム撮影）</h3><p><small>撮影時刻: <b>MCU</b>＝MCUの記録の撮影結果時刻（計測開始時の時刻合わせによる推定）、<b>PC受信</b>＝PCが画像を受け取った時刻、<b>推定（等間隔）</b>＝候補の送信からエピソード終了までを等分した目安（数秒ずれることがあります）。MCUの記録の時刻は、取得画面の「MCUの保存ログ一覧」などで書き出した記録（captures/evidence）があると使われます。視覚モデルの推論は未検証の参考値で、幼虫の有無の判定ではありません。</small></p><div id="shotList"></div></div>
+<h3>人による正解ラベル（ground truth）</h3><table><thead><tr><th>時刻（秒）</th><th>種類</th><th>メモ</th><th>記録日時</th><th></th></tr></thead><tbody id="reviewRows"></tbody></table>
+<p><small>「取消」は削除ではなく、取消の記録を追記します（履歴は残ります）。</small></p>
+<h3>取得中に押した印（参考・変更不可）</h3><table><thead><tr><th>時刻（秒）</th><th>種類</th></tr></thead><tbody id="liveRows"></tbody></table>
+</section>
+<script type="module" src="/static/review/main.js"></script>

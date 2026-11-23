@@ -1,0 +1,23 @@
+{
+  "schema": "bll.vision_training_run.v1-draft",
+  "status": "NOT_RUN",
+  "run_id": null,
+  "task": "VISIBLE_PRESENCE_ONLY",
+  "official_notebook_url": "https://github.com/Seeed-Studio/sscma-model-zoo/blob/main/notebooks/en/Person_Classification_MobileNetV2_0.35_Rep_96.ipynb",
+  "official_notebook_commit": null,
+  "official_notebook_sha256": null,
+  "modelassistant_requested_ref": "2.0.0",
+  "modelassistant_actual_commit": null,
+  "environment": {"python": null, "colab_runtime": null, "gpu": null, "cuda": null, "pip_freeze_sha256": null},
+  "seed": null,
+  "dataset_input_sha256": null,
+  "split_manifest_sha256": null,
+  "verified_class_order": null,
+  "model_input": {"shape": null, "dtype": null, "preprocessing": null, "quantization": null},
+  "thresholds_validation_only": null,
+  "calibration_train_only": null,
+  "artifacts": [],
+  "metrics": null,
+  "vision_rollback_verified": false,
+  "hardware_test_performed": false
+}

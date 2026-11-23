@@ -1,0 +1,12 @@
+**/.pio/
+.platformio-local/
+*.local.ini
+__pycache__/
+.venv/
+.pytest_cache/
+
+# Recorded waveforms, images, videos, Evidence exports and training data stay local.
+captures/
+
+.vscode/
+*.code-workspace

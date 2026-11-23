@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="bll-token" content="__TOKEN__">
+<link rel="stylesheet" href="/static/episodes.css">
+<title>Beetle Life Lab · 観察エピソード</title>
+</head>
+<body>
+<header>
+ <div><div class="eyebrow">BEETLE LIFE LAB / EPISODES</div><h1>観察エピソード</h1></div>
+ <nav><a href="http://127.0.0.1:8765/">観察ノート</a><a href="/">取得画面</a><a href="/review" id="toReview">振り返り（根拠と答え合わせ）</a><a href="/diary">観察日記</a><a href="/demo">デモ再生</a></nav>
+</header>
+<main>
+ <label>記録 <select id="run"></select></label> <span id="runInfo" class="muted"></span>
+ <details class="trash" id="deletePanel"><summary>この記録を削除する（テスト・失敗した計測など）</summary>
+  <p class="muted">記録を一覧・エピソード・振り返り・デモ再生・観察日記から外します。波形・動画・答え合わせのラベルは消さずに残すので、下の「削除した記録」からいつでも元に戻せます。MCU の Evidence ログと、観察ノートに取り込んだ写真は変わりません（写真は観察ノートでセッションごと削除できます）。</p>
+  <p id="deleteScope" class="muted"></p>
+  <div class="trash-row"><label>理由（任意）<input id="deleteReason" maxlength="300" placeholder="例: 動作テスト・配線が外れていた"></label><button id="deleteBtn" type="button" class="danger">削除する</button></div>
+ </details>
+ <p id="trashStatus" class="muted" role="status" aria-live="polite"></p>
+ <details class="trash" id="trashPanel" hidden><summary>削除した記録（<span id="trashCount">0</span>）</summary><ul id="trashRows" class="trash-rows"></ul></details>
+ <div id="error"></div>
+ <section class="summary" id="summary" hidden>
+  <div class="big" id="headline"></div>
+  <div class="facts" id="facts"></div>
+ </section>
+ <p class="honest" id="honest" hidden>幼虫が動いたかどうかは、この画面では判定しません（わからない）。「あなたの答え」は振り返り画面で人が付けた正解ラベルです。揺れの比は参考値で、外乱かどうかを決めるしきい値はまだありません。</p>
+ <div id="episodes"></div>
+</main>
+<script src="/observation_view.js"></script>
+<script type="module" src="/static/episodes/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "schema":"bll.observation_demo_scenarios.v1",
+  "origin":"SYNTHETIC",
+  "generator":"firmware/xiao_esp32s3/test/host/test_observation_core.cpp",
+  "policy_version":"observation-policy-v3",
+  "reducer_version":"temporal-reducer-v2",
+  "claim":"Rule-based policy on synthetic inputs. Not a measured detection or larva result.",
+  "scenarios":[
+    {"id":"history_changes_action","title":"同じ振動入力でも履歴で行動が変わる（前面・背面の2視点を仮定）","note":"三視点機構は未製作。視点の可用性は仮定。","steps":[
+      {"input":"振動候補（前面も背面も未観測）","proposed":"CAPTURE_FRONT","reasons":["PASSIVE_CANDIDATE_NEW","FRONT_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED"],"baseline_b":"CAPTURE_FRONT"},
+      {"input":"同じ振動候補（前面を11秒前に確認済み）","proposed":"CAPTURE_BACK","reasons":["PASSIVE_CANDIDATE_NEW","FRONT_RECENTLY_CHECKED","BACK_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED"],"baseline_b":"CAPTURE_FRONT"},
+      {"input":"同じ振動候補（前面・背面とも30秒以内に確認済み）","proposed":"WAIT","reasons":["PASSIVE_CANDIDATE_NEW","ALL_VIEWS_RECENTLY_CHECKED","FRONT_RECENTLY_CHECKED","BACK_RECENTLY_CHECKED"],"baseline_b":"CAPTURE_FRONT"}
+    ]},
+    {"id":"fixed_camera_live_equivalent","title":"固定カメラ1台（実機と同じ構成）で18秒ごとの振動候補","note":"LIVE閉ループと同じ規則。直近30秒に撮影済みなら待機。","steps":[
+      {"input":"人工掘削の振動候補 t=18s","proposed":"CAPTURE_FIXED","reasons":["PASSIVE_CANDIDATE_NEW","FIXED_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED"],"baseline_b":"CAPTURE_FIXED"},
+      {"input":"人工掘削の振動候補 t=36s","proposed":"WAIT","reasons":["PASSIVE_CANDIDATE_NEW","ALL_VIEWS_RECENTLY_CHECKED","FIXED_RECENTLY_CHECKED"],"baseline_b":"CAPTURE_FIXED"},
+      {"input":"人工掘削の振動候補 t=54s","proposed":"CAPTURE_FIXED","reasons":["PASSIVE_CANDIDATE_NEW","FIXED_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED"],"baseline_b":"CAPTURE_FIXED"},
+      {"input":"人工掘削の振動候補 t=72s","proposed":"WAIT","reasons":["PASSIVE_CANDIDATE_NEW","ALL_VIEWS_RECENTLY_CHECKED","FIXED_RECENTLY_CHECKED"],"baseline_b":"CAPTURE_FIXED"}
+    ]},
+    {"id":"dark_and_failures","title":"暗所と撮影失敗：観測不能を不在にしない","note":"撮影失敗は『見えない』ではなく観測できなかった事実として記録。","steps":[
+      {"input":"振動候補（暗所と申告）","proposed":"WAIT","reasons":["PASSIVE_CANDIDATE_NEW","LOW_LIGHT"],"baseline_b":"CAPTURE_FIXED"},
+      {"input":"振動候補（撮影失敗）","proposed":"CAPTURE_FIXED","reasons":["PASSIVE_CANDIDATE_NEW","FIXED_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED"],"baseline_b":"CAPTURE_FIXED"},
+      {"input":"振動候補（再度撮影失敗）","proposed":"CAPTURE_FIXED","reasons":["PASSIVE_CANDIDATE_NEW","PREVIOUS_ATTEMPT_FAILED","FIXED_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED"],"baseline_b":"CAPTURE_FIXED"},
+      {"input":"振動候補（失敗が続いた後）","proposed":"WAIT","reasons":["PASSIVE_CANDIDATE_NEW","VISION_REPEATEDLY_FAILED"],"baseline_b":"CAPTURE_FIXED"}
+    ]},
+    {"id":"episode_follow_up","title":"1つの振動候補で未観測の視点を順に撮り、予算で止まる（3視点を仮定）","note":"三視点機構は未製作。視点の可用性は仮定。予算到達後は判断を記録せず終了。","steps":[
+      {"input":"振動候補（3視点とも未観測）","proposed":"CAPTURE_FRONT","reasons":["PASSIVE_CANDIDATE_NEW","FRONT_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED"],"baseline_b":"CAPTURE_FRONT"},
+      {"input":"同じ候補の続き（前面は撮影済み）","proposed":"CAPTURE_BACK","reasons":["FRONT_RECENTLY_CHECKED","BACK_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED","EPISODE_FOLLOW_UP"],"baseline_b":"—"},
+      {"input":"同じ候補の続き（撮影予算2回を使い切り・記録しない）","proposed":"NONE","reasons":["EPISODE_FOLLOW_UP","EPISODE_BUDGET_EXHAUSTED"],"baseline_b":"—"}
+    ]}
+  ]
+}

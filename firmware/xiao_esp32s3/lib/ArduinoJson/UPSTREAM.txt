@@ -1,0 +1,3 @@
+https://github.com/bblanchon/ArduinoJson
+commit: 40ee05c065ce248192c47eb37af7a70a6935dfa6
+Source files unchanged. Restored by scripts/fetch_vision_libraries.py.

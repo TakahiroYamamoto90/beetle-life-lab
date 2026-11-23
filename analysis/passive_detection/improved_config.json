@@ -1,0 +1,19 @@
+{
+  "schema": "bll.passive_continuous_development.v2",
+  "status": "DEVELOPED_ON_TRIAL296_REQUIRES_NEW_CONTINUOUS_HOLDOUT",
+  "window_s": 0.02,
+  "warmup_s": 5.0,
+  "smoothing_tau_s": 0.1,
+  "background_s": 5.0,
+  "scale_floor_fraction": 0.02,
+  "confirm_s": 0.1,
+  "release_confirm_s": 0.2,
+  "peak_drop_fraction": 0.12,
+  "rearm_s": 1.0,
+  "rearm_stability_fraction": 0.08,
+  "max_candidate_s": 15.0,
+  "models": {
+    "A2_relative_rms": {"kind": "ratio", "on": 1.12, "off": 1.04, "update_limit": 1.06},
+    "B2_guarded_mad": {"kind": "robust", "on": 4.0, "off": 1.5, "update_limit": 2.0}
+  }
+}

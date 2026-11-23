@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="bll-token" content="__TOKEN__">
+<link rel="stylesheet" href="/static/live.css">
+<title>Beetle Life Lab — AD3ピエゾ</title>
+<h1>知覚：振動センシングと観測ループ <small style="font-size:60%;font-weight:normal">AD3・ピエゾ → MCU</small></h1>
+<p>知覚（AD3でピエゾの振動を計測し、PCで振動イベント候補を検出） → 記憶（MCUのEvidenceログへ保存） → 判断（MCUのルールベース方策） → 行動（アームで視点を選んで撮影）。幼虫活動は <b>UNKNOWN</b> のままです。</p>
+<p><a href="/review">エピソードを振り返って正解ラベル（ground truth）を付ける →</a>　<a href="/episodes">観察エピソードを見る →</a>　<a href="/diary">観察日記 →</a>　<a href="/demo">デモ再生（動画収録用） →</a></p>
+<section><div id="devices">AD3を確認中…</div>
+<form id="form">
+<label>入力 <select id="mode"><option value="live">LIVE：AD3実測</option><option value="mock">MOCK：合成波形・転送なし</option></select></label>
+<label>AD3 <select id="device"></select></label>
+<label>CH2レンジ（全幅V） <select id="range"><option>0.5</option><option selected>1</option><option>2</option><option>5</option><option>10</option></select></label>
+<label>取得秒数 <input id="duration" type="number" min="1" max="1800" value="90" required></label><br>
+<label><input id="wiring" type="checkbox">CH2=ピエゾ、GND・入力レンジを確認済み、Wavegen未接続、WaveFormsの計測を終了</label><br>
+<label><input id="forward" type="checkbox">振動イベントをエージェントの記憶（MCU）へ送り、観測ループを動かす</label>
+<label title="観察を判断するマイコン（Arduino Nano ESP32。以前は XIAO ESP32S3）">MCU <select id="port"></select></label>
+<br><label><input id="video" type="checkbox">OBSで録画（計測の開始・終了に連動。PCの振り返り用で、検出・MCUには使いません）</label>
+<br><label>ケースID <select id="caseSelect" aria-label="登録済みのケース"><option value="">登録済みから選ぶ…</option></select> <input id="case" maxlength="128" placeholder="新しいIDも入力可"></label><label>セッションID <input id="session" maxlength="128"></label>
+<br><label>照明 <input id="illumination" list="lightList" maxlength="128" placeholder="例: LEDバー FRONT斜め／なし"></label><datalist id="lightList"></datalist>
+<br><small id="collectionHint">MCUへ保存した計測の撮影画像は、終了時に観察ノートへ「未確認」として取り込みます（ケースIDが必要）。</small>
+<label>取得条件・操作メモ <input id="note" maxlength="500" placeholder="静置／人工掘削など"></label>
+<p><small>100 kHz、CH1/CH2の電圧を保存。検出はCH2の300–1500 Hz帯域RMS。開始後約5秒は背景取得のため静置してください。無振動でも「正常」「不在」とは判定しません。原波形は約1.6 MB/秒です。</small></p>
+<button id="start">開始</button> <button id="stop" type="button" disabled>停止</button>
+</form><p id="error" role="alert"></p></section>
+<section><span id="origin" class="tag">未開始</span><p id="status">待機中</p><div id="downloads"></div></section>
+<section><label>表示時間 <select id="seconds"><option>1</option><option>5</option><option selected>10</option></select> 秒</label>
+<label>波形Y軸 <select id="scale"><option value="auto">自動</option><option value="1">±1 mV</option><option value="5">±5 mV</option><option value="20">±20 mV</option><option value="100">±100 mV</option><option value="500">±500 mV</option></select></label>
+<div class="marks"><b>操作の記録</b> <button id="markDigStart" type="button" disabled>人工刺激（掘削）開始</button> <button id="markDigEnd" type="button" disabled>人工刺激（掘削）終了</button> <button id="markNoise" type="button" disabled>外乱（声・物音）</button> <span id="markStatus"></span><br>
+<small>押した時点の取得経過秒を、PCの annotations.jsonl にだけ保存します（人の操作記録・おおよその時刻）。検出やMCUには送りません。グラフでは掘削中を薄い黄色、物音を紫の線で表示します。</small></div>
+<h3>CH2 原波形（mV、5 msごとの最小・最大）</h3><canvas id="wave"></canvas>
+<h3>CH2 帯域RMS（mV）</h3><canvas id="rms"></canvas>
+<h3>観察のきっかけ：フォレストの確率（0〜1／破線=しきい値。どちらかが越えた最初の時刻で MCU に送ります）</h3><canvas id="forestP"></canvas>
+<h3>観察のきっかけ：低周波 1–40 Hz の比（CH2 ÷ 直前30秒の下位20%／破線=3）</h3><canvas id="lowRatio"></canvas>
+<h3>振動イベント検出スコア（B2・比較用。2026-11-23 からは観察のきっかけに使っていません／破線=4）</h3><canvas id="score"></canvas></section>
+<section><h3>振動イベント候補（知覚の出力）</h3><p><small>候補は区間終了後に転送します。終了未確定の候補やFAULTは転送しません。</small></p>
+<table><thead><tr><th>#</th><th>区間（秒）</th><th>ピークRMS</th><th>ピークスコア</th><th title="候補区間の300–1500 Hz帯域RMS ÷ 直前5秒の中央値。参考値で、検出・MCUには使いません">対象 CH2 上昇</th><th title="同じ計算の参照センサーCH1（外乱・自分の動きの監視）">参照 CH1 上昇</th></tr></thead><tbody id="events"></tbody></table></section>
+<section><h3>判断と行動：見えないなら、観測方法を変える（ルールベースの方策・能動観測）</h3>
+<p><small>MCUが振動イベントを記憶（Evidenceログ）に保存した後、その履歴から次にどの視点を見るかを決めます（能動観測）。<b>判断は説明可能なルールベースの方策で、学習済みAIではありません。</b>撮影成功は「画像が撮れた」ことで、幼虫の検出ではありません。振動イベント候補は人工刺激（掘削）や外乱でも出ます。</small></p>
+<p><span id="observationMode" class="tag">MCU転送なし</span> <span id="modelMode" class="tag" hidden></span></p>
+<p><small>視覚モデルの欄は、Vision V2が撮影と同じフレームで出した推論です（未検証・参考）。方策の判断にもEvidenceログにも使いません。学習画像は固定カメラのみで、TOP・BACKは学習外の視点です。</small></p>
+<div class="compare">
+<div><h4>BASELINE B：反射的な方策（記憶なし・候補ごとに必ず撮影）</h4><div class="big" id="baselineCount">0 回</div><small>同じ振動候補に対し、直前の撮影や履歴を見ずに固定カメラで撮影した場合の回数</small></div>
+<div><h4>PROPOSED：記憶に基づく方策（MCU・実機）</h4><div class="big" id="proposedCount">撮影 0 回 / 待機 0 回</div>
+<p class="why" id="latestWhy">なぜこの行動？ — まだ判断はありません</p><p id="latestResult"></p><p id="latestPose"></p><img id="latestImage" class="zoomable" title="クリックで拡大" alt="最新の観測画像" hidden><p id="latestModel"></p></div>
+</div>
+<div class="tablewrap"><table><thead><tr><th>候補#</th><th>視点（能動観測）</th><th>なぜこの行動？</th><th>Baseline B</th><th>結果</th><th>画像</th><th>視覚モデル（未検証・参考）</th></tr></thead><tbody id="observations"></tbody></table></div>
+</section>
+<section><h3>規則の比較デモ <span class="tag synthetic">SYNTHETIC（合成入力）</span></h3>
+<p><small>実機と同じ判断規則（ファームウェアのコア）に合成入力を与えた結果です。測定データではありません。三視点機構は未製作のため、視点の切替えは仮定です。</small></p>
+<div id="scenarios">読込中…</div></section>
+<section><h3>エージェントの記憶（MCUのEvidenceログ）</h3>
+<p><small>取得を停止し、上のMCUポートを選んで読み出してください。MCUには起動・診断・振動候補・方策の判断・撮影結果の記録を保存しています（波形・画像・動画はPC側）。読み出し元で「保存済み」を選ぶと、PCに書き出したコピー（<code>captures/evidence</code>・<code>captures/flash_backup</code>）を読み取り専用で表示します。MCUのログを空にした後の過去分はこちらで見られます。保存済みの表示はMCUに書き戻しません。</small></p>
+<label>読み出し元 <select id="evidenceSource"><option value="">MCU本体（シリアルで読み出し）</option></select></label>
+<button id="refreshExports" type="button">保存済みの一覧を更新</button><br>
+<button id="readEvidence" type="button">記憶（Evidenceログ）を読み出す</button>
+<button id="syncClock" type="button">PCのUTCで同期・一覧更新</button>
+<label>種類 <select id="evidenceType"><option value="all">すべて</option><option value="PASSIVE_VIBRATION_CANDIDATE">振動候補</option><option value="BOOT">起動</option><option value="DEVICE_DIAGNOSTIC">診断</option><option value="TIME_SYNC">時刻同期</option><option value="POLICY_DECISION">方策の判断</option><option value="OBSERVATION_ACTION_RESULT">行動の結果</option></select></label>
+<p><small>日時はJSTで表示します。同期はPC時計を基準とする推定で、有効期間は1時間です。同期操作はTIME_SYNCを1件保存します。同じ起動の過去ログは同期点の前後1時間まで推定表示し、原ログは変更しません。再起動後は再同期が必要です。新FWではMCU転送を伴う実測開始時にも同期します。</small></p>
+<button id="downloadEvidence" type="button" disabled>全ログをJSONLでダウンロード</button>
+<p id="evidenceStatus" role="status">未取得</p>
+<p class="boot-note">起動ごとにまとめ、新しい起動から表示します。各起動を開くと古いイベントから順に確認できます。「最終記録」は最後に保存されたイベントで、電源OFF時刻は不明です。</p>
+<div id="evidenceGroups"></div>
+<p><button id="evidencePrevious" type="button" disabled>新しい起動へ</button> <span id="evidencePage"></span> <button id="evidenceNext" type="button" disabled>古い起動へ</button></p>
+</section>
+<p><a href="http://127.0.0.1:8765/">観察ノートへ</a> — MCU転送中は、観察ノートの撮影・MCU ADC取得を停止してください。</p>
+<script src="/evidence_groups.js"></script>
+<script src="/observation_view.js"></script>
+<script type="module" src="/static/live/main.js"></script></html>

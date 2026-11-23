@@ -1,0 +1,10 @@
+{
+  "schema": "bll.vision_split_config.v1",
+  "seed": "bll-vision-v1-20261101",
+  "class_order": ["NO_VISIBLE_LARVA", "VISIBLE_LARVA"],
+  "group_fields": ["capture_session_id", "case_id", "larva_id", "continuity_group"],
+  "near_duplicate_algorithm": "dhash64-pillow12-lanczos-v1",
+  "near_duplicate_max_hamming": 4,
+  "ratios": {"train": 0.7, "validation": 0.15, "test": 0.15},
+  "max_images": 5000
+}

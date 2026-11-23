@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bll:vision-image-label:v1",
+  "title": "Human visibility audit record, not model inference",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "image_id", "image", "sha256", "capture_session_id", "case_id", "larva_id", "device_id", "camera_pose", "illumination_profile", "acquisition_protocol_id", "continuity_group", "captured_at_utc", "timestamp_quality", "pc_capture_bracket", "source_kind", "purpose", "label", "labeler", "label_version", "annotation_history", "capture", "session"],
+  "properties": {
+    "schema": {"const": "bll.vision_image_label.v1"},
+    "image_id": {"type": "string", "minLength": 1},
+    "image": {"type": "string", "minLength": 1},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "capture_session_id": {"type": "string", "minLength": 1},
+    "case_id": {"type": "string"},
+    "larva_id": {"type": ["string", "null"]},
+    "device_id": {"type": ["string", "null"]},
+    "camera_pose": {"enum": ["FIXED", "FRONT", "TOP", "BACK", null]},
+    "illumination_profile": {"type": ["string", "null"]},
+    "acquisition_protocol_id": {"type": ["string", "null"]},
+    "continuity_group": {"type": ["string", "null"]},
+    "captured_at_utc": {"type": "null"},
+    "timestamp_quality": {"const": "EXPOSURE_UNSYNCED"},
+    "pc_capture_bracket": {
+      "type": "object", "additionalProperties": false, "required": ["request", "received"],
+      "properties": {"request": {"type": ["string", "null"]}, "received": {"type": ["string", "null"]}}
+    },
+    "source_kind": {"enum": ["REAL_CAMERA", "UNVERIFIED", "SYNTHETIC"]},
+    "purpose": {"enum": ["dataset", "setup"]},
+    "label": {"enum": ["VISIBLE_LARVA", "NO_VISIBLE_LARVA", "AMBIGUOUS", "UNUSABLE", "UNREVIEWED", "EXCLUDED"]},
+    "labeler": {"type": ["string", "null"]},
+    "label_version": {"const": "human-visible-presence-v1"},
+    "dataset_role": {"enum": ["UNASSIGNED", "EVALUATION_ONLY"]},
+    "dataset_role_history": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["role_id", "role", "set_by", "set_at_utc"],
+        "properties": {"role_id": {"type": "integer"}, "role": {"enum": ["UNASSIGNED", "EVALUATION_ONLY"]},
+                       "set_by": {"type": ["string", "null"]}, "set_at_utc": {"type": "string"}}
+      }
+    },
+    "case_role": {"enum": ["UNASSIGNED", "TRAINING", "EVALUATION"]},
+    "case_role_history": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["profile_id", "display_name", "role", "note", "set_by", "set_at_utc"],
+        "properties": {"profile_id": {"type": "integer"}, "display_name": {"type": "string"},
+                       "role": {"enum": ["UNASSIGNED", "TRAINING", "EVALUATION"]}, "note": {"type": "string"},
+                       "set_by": {"type": ["string", "null"]}, "set_at_utc": {"type": "string"}}
+      }
+    },
+    "case_assignment_history": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["assignment_id", "case_id", "reason", "set_by", "set_at_utc"],
+        "properties": {"assignment_id": {"type": "integer"}, "case_id": {"type": "string", "minLength": 1},
+                       "reason": {"type": "string"}, "set_by": {"type": ["string", "null"]}, "set_at_utc": {"type": "string"}}
+      }
+    },
+    "annotation_history": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["annotation_id", "label", "original_label", "labeler", "reviewed_at_utc", "note", "label_version"],
+        "properties": {
+          "annotation_id": {"type": "integer", "minimum": 1},
+          "label": {"enum": ["VISIBLE_LARVA", "NO_VISIBLE_LARVA", "AMBIGUOUS", "UNUSABLE", "UNREVIEWED", "EXCLUDED"]},
+          "original_label": {"enum": ["larva_visible", "background", "uncertain", "unusable", "unreviewed", "exclude"]},
+          "labeler": {"type": "string"}, "reviewed_at_utc": {"type": "string"}, "note": {"type": "string"},
+          "label_version": {"const": "human-visible-presence-v1"}
+        }
+      }
+    },
+    "capture": {"type": "object"}, "session": {"type": "object"}
+  }
+}

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="bll-token" content="__BLL_TOKEN__">
+<link rel="stylesheet" href="/static/notes.css">
+<title>Beetle Life Lab · 観察ノート</title>
+</head>
+<body>
+<header><div><div class="eyebrow">BEETLE LIFE LAB / FIELD NOTES</div><h1>観察ノート</h1></div><span class="tag">このPCで記録</span></header>
+<main>
+<p><a href="http://127.0.0.1:8766/" target="_blank" rel="noopener">AD3のピエゾ波形・MCU候補転送を開く</a>（AD3専用サーバーの起動が必要）　<a href="http://127.0.0.1:8766/episodes" target="_blank" rel="noopener">観察エピソード（感じた→判断した→動いた→確かめた）を見る</a></p>
+<div id="message" class="message" role="status" aria-live="polite">カメラの接続を確認しています…</div>
+<details class="panel" id="flowPanel"><summary>データの流れ・ケースの役割（収集・学習・検証・観測ループ）</summary>
+<div class="flow">
+<div class="flow-step"><b>A データ収集</b>固定カメラで1枚ずつ撮影し、人が「見える／見えない」を付ける（このページ）。</div>
+<div class="flow-step"><b>B 学習</b><strong>学習用ケース</strong>の、人がラベルを付けた固定カメラ画像でモデルを作る。評価用の画像は使わない。</div>
+<div class="flow-step"><b>C 検証</b><strong>評価用ケース</strong>と評価専用の画像で成績を測る。学習に使った画像では測らない。</div>
+<div class="flow-step loop"><b>D 実地検証（観測ループ）</b>知覚（振動イベント候補） → 判断（MCUのルールベース方策） → 行動（アームで前面・上面・背面を能動観測）。視覚モデルの推論は参考表示のみ。取り込んだ画像に人がラベルを付けると、Cの材料になる。</div>
+</div>
+<p class="flow-line">ケース（飼育容器・役割）› 連続フレーム群（学習・評価の分割単位） › セッション（1回の撮影・名前を変更可）› 画像（人の正解ラベル・視覚モデルの参考値）</p>
+<dl class="terms">
+<dt>ケース</dt><dd>飼育容器。役割（学習用／評価用）はケース単位で決め、1つのケースの中で学習と評価を混ぜない。IDは変えず、表示名を付けられる。</dd>
+<dt>セッション</dt><dd>1回の撮影の記録。名前は後から変更できる（記録した撮影条件は変わらない）。観測ループは1回の実行が1セッション。</dd>
+<dt>連続フレーム群（連続収集グループ）</dt><dd>続けて撮った一連の画像。隣り合う画像は似ているため、学習と評価に分けない。</dd>
+<dt>評価専用（画像）</dt><dd>学習用ケースの中で、例外的に学習から外す画像。</dd>
+<dt>学習済み</dt><dd>そのモデルの学習に使った画像。評価には使えない。</dd>
+<dt>見えない</dt><dd>画像に写っていないという意味で、「いない」ではない。</dd>
+</dl>
+<h2>ケースの表示名と役割</h2>
+<div class="table-scroll"><table class="case-table"><thead><tr><th>表示名</th><th>ケースID</th><th>役割</th><th>画像</th><th>未確認</th><th>学習済み</th><th></th></tr></thead><tbody id="caseRows"></tbody></table></div>
+<p id="caseStatus" class="muted" role="status" aria-live="polite"></p>
+<p id="trainingModels" class="muted note"></p>
+</details>
+<details class="panel" id="piezoPanel"><summary>ピエゾ受動信号を表示・取得</summary>
+<div class="row"><h2 id="piezoHeading">ピエゾ受動信号</h2><span id="piezoStateTag" class="tag">待機中</span></div>
+<p class="muted">MCUのADC raw値を公称8 kHzで取得します。横軸は時間、縦軸はADC raw値です（初期表示: 直近3秒・0–4095）。縦線は画面1ピクセル内の最小〜最大値を表し、周波数スペクトルではありません。CSVには受信した全点を保存します。</p>
+<canvas id="piezoCanvas" aria-label="ピエゾADC raw値の時系列グラフ"></canvas>
+<div class="toolbar" aria-label="グラフの表示範囲">
+<label>X軸・表示時間<select id="piezoWindow"><option value="0.1">0.1秒</option><option value="0.25">0.25秒</option><option value="0.5">0.5秒</option><option value="1">1秒</option><option value="3" selected>3秒</option><option value="5">5秒</option><option value="10">10秒</option></select></label>
+<label>Y軸・下限<input id="piezoYMin" type="number" min="0" max="4094" step="1" value="0" style="width:110px"></label>
+<label>Y軸・上限<input id="piezoYMax" type="number" min="1" max="4095" step="1" value="4095" style="width:110px"></label>
+<button id="piezoScaleApply" type="button" class="secondary">範囲を適用</button>
+<button id="piezoScaleReset" type="button" class="secondary">表示をリセット</button>
+</div>
+<p id="piezoScaleNote" class="muted" role="status">表示範囲のみ変更します。例: Y軸を0〜100にすると小さな信号を拡大できます。表示用履歴は受信した直近最大10秒です。</p>
+<div class="toolbar">
+<label style="min-width:180px">取得条件<select id="piezoCondition"><option value="quiet">静置・ノイズ床</option><option value="dummy-digging">模擬掘削</option><option value="setup">設置・動作確認</option></select></label>
+<label style="width:150px">時間（秒）<input id="piezoDuration" type="number" min="1" max="4294967295" placeholder="空欄: 上限なし"></label>
+<button id="piezoStartBtn" type="button">信号取得を開始</button><button id="piezoStopBtn" class="secondary" type="button" disabled>停止・保存</button>
+</div>
+<div id="piezoStatus" class="numbers" aria-live="polite">取得待ち · raw ADC 0–4095</div>
+<div id="piezoFiles" class="filelinks muted"></div>
+<p class="muted note" style="margin-top:12px">電圧校正・実効サンプリング周波数・信号の意味は未評価です。無期限取得ではCSVが増え続けます（目安は数百MB/時）。シリアルモニターや他のCOM操作は閉じてください。取得中はカメラ撮影を行えません。</p>
+</details>
+<details class="panel settings" id="collectionSettings"><summary>撮影セッション・接続・データ出力</summary><div class="settings-grid"><div>
+<div class="panel"><h2>撮影セッション</h2>
+<details id="newSession" open><summary>新しいセッション</summary><form id="sessionForm"><div class="grid">
+<label class="full">用途<select name="purpose"><option value="dataset">幼虫用データ収集</option><option value="setup">設置・動作確認</option></select></label>
+<label>ケースID<input name="box_id" maxlength="1000" placeholder="例: box-01" list="caseList"><datalist id="caseList"></datalist></label><label>個体ID（任意）<input name="larva_id" maxlength="1000" placeholder="不明なら空欄"></label>
+<label>装置ID<input name="device_id" maxlength="1000" placeholder="固定した識別名。COM番号は使わない"></label><label>カメラ位置<select name="camera_pose"><option value="FIXED">固定</option></select></label>
+<label>照明条件ID<input name="illumination_profile" maxlength="1000" placeholder="例: fixed-light-01"></label><label>撮影手順ID<input name="acquisition_protocol_id" maxlength="1000" placeholder="例: fixed-case-v1"></label>
+<label class="full">連続収集グループ<input name="continuity_group" maxlength="1000" placeholder="同じ連続撮影は、セッションを分けても同じID"></label>
+<label>照明<input name="lighting" maxlength="1000" placeholder="例: 室内灯＋補助灯"></label><label>距離（mm）<input name="distance_mm" type="number" min="1" max="10000" placeholder="未計測なら空欄"></label>
+<label>マット・背景<input name="substrate" maxlength="1000" placeholder="例: 発酵マット"></label><label>温度（℃）<input name="temperature_c" type="number" min="-50" max="100" step="0.1" placeholder="未計測なら空欄"></label>
+<label class="full">撮影条件メモ<textarea name="notes" rows="2" maxlength="1000" placeholder="撮影方向、ケースの状態など"></textarea></label></div><button type="submit">セッションを作成</button></form></details></div>
+</div><div class="settings-side"><div class="panel"><h2>接続</h2><label>MCUポート<select id="portSelect"></select></label><button id="refreshBtn" class="secondary" type="button">接続を更新</button><p class="muted" style="margin-top:10px">シリアルモニターを閉じてください。カメラ撮影とピエゾ取得は同じCOMポートを使うため、同時には動作しません。</p></div>
+<div class="panel"><h2>学習データセットを書き出す</h2><p class="muted">従来の一覧は、人が「見える／見えない」と確認した画像を出力します。学習への投入前に、監査用の全件出力から条件・画像・分割を検査してください。</p><a class="linkbutton" href="/api/export" download="vision_dataset.jsonl">従来のJSONL</a> <a class="linkbutton" href="/api/classification-snapshot" download="vision_classification_snapshot.jsonl">分類監査用JSONL（全件・履歴付き）</a><p class="muted note" style="margin-top:12px">監査用出力は未確認・使用不能・除外も含み、直接学習に使用しません。装置・照明・撮影手順・連続収集グループが未入力の画像は、新しい検査では学習候補から除外されます。</p></div>
+</div></div></details>
+<div class="panel session-bar"><div class="session-row"><label class="session-pick">記録先<select id="sessionSelect"><option value="">新しいセッションを作成してください</option></select></label>
+<div class="title-edit"><label>セッション名（表示用・空欄で既定の表示）<input id="sessionTitle" maxlength="120" placeholder="例: 11/11 観測ループ 1回目"></label><button id="sessionTitleBtn" type="button" class="secondary">名前を保存</button></div></div>
+<label class="check" style="font-weight:400;font-size:13px"><input id="sessionUnreviewedOnly" type="checkbox" style="display:inline;width:auto;margin:0 6px 0 0">未確認の画像があるセッションだけ表示</label><p id="sessionInfo" class="muted">カメラ位置・ケース・撮影日が変わったらセッションを分けます。</p><div id="sessionBadges" class="badges"></div>
+<details class="move-case" id="movePanel"><summary>画像のケースを移す（整理・取り違えの訂正）</summary>
+<p class="muted">画像の右上のチェックで選びます。チェックがなければ、このセッションの画像すべてが対象です。撮影時のケースとセッションは記録に残り、移した履歴も保存します。隣り合う画像は学習と評価に分けないよう、同じ撮影の画像はまとめて移してください。</p>
+<div class="move-row"><button id="pickAll" type="button" class="secondary">すべてチェック</button><button id="pickNone" type="button" class="secondary">チェックを外す</button><span id="moveScope" class="muted"></span></div>
+<div class="move-row"><label>移す先のケースID<input id="moveCase" maxlength="64" list="caseList" placeholder="例: box-03（新しいIDも可）"></label><label>理由（任意）<input id="moveReason" maxlength="1000" placeholder="例: 取り違え。本当は box-02 の幼虫"></label>
+<button id="moveBtn" type="button">移す</button><button id="moveBackBtn" type="button" class="secondary">撮影時のケースに戻す</button></div>
+<p id="moveSummary" class="muted"></p><p id="moveStatus" class="review-status" role="status" aria-live="polite"></p></details>
+<details class="move-case" id="deletePanel"><summary>このセッションを削除する</summary>
+<p class="muted">セッションと画像を一覧・書き出し・監査用出力から外します。画像ファイル・ラベル・履歴は消さずに残すので、下の「削除したセッション」からいつでも元に戻せます。学習・評価に使ったモデルがある画像を含むセッションは削除できません。</p>
+<div class="move-row"><span id="deleteScope" class="muted"></span></div>
+<div class="move-row"><label>理由（任意）<input id="deleteReason" maxlength="1000" placeholder="例: テスト撮影・ピンぼけのみ"></label><button id="deleteBtn" type="button" class="danger">削除する</button></div></details>
+<p id="deleteStatus" class="review-status" role="status" aria-live="polite"></p>
+<details class="move-case" id="trashPanel" hidden><summary>削除したセッション（<span id="trashCount">0</span>）</summary><ul id="trashRows" class="trash-rows"></ul></details></div>
+<div class="layout" id="cameraWorkspace"><section class="panel camera-panel" aria-label="プレビュー・撮影・アノテーション">
+<div class="row" style="margin-bottom:8px"><p class="muted" style="margin:0">プレビューで向き・明るさ・距離を調整してから、収集用の画像を保存します。</p><span id="imageTag" class="tag">画像未取得</span></div>
+<div class="preview"><img id="image" class="zoomable" title="クリックで拡大" alt="カメラで撮影した画像"><div id="imageModelOverlay" class="model-image-overlay hidden" aria-live="polite"></div><div id="placeholder" class="placeholder">まず「プレビューを撮る」を押してください。<br><small style="color:inherit">自動撮影は行いません。</small></div></div>
+<div class="toolbar"><button id="previewBtn" type="button">プレビューを撮る</button><button id="saveBtn" class="secondary" type="button" disabled>セッションに撮影・保存</button><button id="classifySaveBtn" type="button" disabled>視覚モデルで推論して保存（参考）</button></div>
+<div id="imageInfo" class="imageinfo">240×240の静止画をMCU経由で取得します。</div>
+<section id="review" class="hidden">
+<div id="modelResult" class="panel" role="status" aria-live="polite">この画像に視覚モデルの推論はありません。</div>
+<div class="grid"><label>画像ラベル<select id="label"><option value="unreviewed">未確認</option><option value="larva_visible">幼虫が画像に見える</option><option value="background">幼虫が画像に見えない（生体不在ではない）</option><option value="uncertain">判別できない</option><option value="unusable">画質などにより使用不能</option><option value="exclude">収集対象から除外</option></select></label><label>確認者（任意）<input id="reviewer" maxlength="120" placeholder="名前や記録用ID"></label><label class="full">確認メモ<textarea id="reviewNote" rows="2" maxlength="1000" placeholder="ピンぼけ、影、体の一部が見える、など"></textarea></label><label class="full check"><input id="evalOnly" type="checkbox">評価専用（学習用ケースの中で、例外的に学習に使わない画像）</label><p id="roleNote" class="full muted" style="margin:0"></p></div>
+<div class="review-actions"><button id="annotateBtn" type="button" class="secondary" hidden>保存を再試行</button><span class="muted">ラベルと評価専用は選んだ時点で保存。メモ・確認者は入力欄を離れると保存します（確認者名は任意）。</span></div><p id="reviewStatus" class="review-status" role="status" aria-live="polite"></p></section>
+</section>
+<section class="panel gallery-panel" aria-labelledby="galleryHeading"><div class="row"><h2 id="galleryHeading">保存した画像</h2><span id="count" class="numbers"></span></div><label class="check" style="font-weight:400;font-size:13px"><input id="unreviewedOnly" type="checkbox" style="display:inline;width:auto;margin:0 6px 0 0">未確認の画像だけ表示</label><p class="muted">画像を選ぶと左側で確認・編集できます。ラベルは選んだ時点で記録されます（変更履歴も保存）。</p><div class="gallery-frame"><div class="gallery-scroll"><div id="gallery" class="gallery"></div><p id="empty" class="muted">このセッションには画像がありません。</p></div></div></section>
+</div>
+</main>
+<footer>Beetle Life Lab — Feel the Invisible · 画像と記録はPC内に保存されます。幼虫を掘り返さず、自然に見えた場面を記録してください。</footer>
+<script type="module" src="/static/notes/main.js"></script></body></html>
