@@ -2,8 +2,8 @@
   "schema":"bll.observation_demo_scenarios.v1",
   "origin":"SYNTHETIC",
   "generator":"firmware/xiao_esp32s3/test/host/test_observation_core.cpp",
-  "policy_version":"observation-policy-v3",
-  "reducer_version":"temporal-reducer-v2",
+  "policy_version":"observation-policy-v4",
+  "reducer_version":"temporal-reducer-v3",
   "claim":"Rule-based policy on synthetic inputs. Not a measured detection or larva result.",
   "scenarios":[
     {"id":"history_changes_action","title":"同じ振動入力でも履歴で行動が変わる（前面・背面の2視点を仮定）","note":"三視点機構は未製作。視点の可用性は仮定。","steps":[
@@ -27,6 +27,12 @@
       {"input":"振動候補（3視点とも未観測）","proposed":"CAPTURE_FRONT","reasons":["PASSIVE_CANDIDATE_NEW","FRONT_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED"],"baseline_b":"CAPTURE_FRONT"},
       {"input":"同じ候補の続き（前面は撮影済み）","proposed":"CAPTURE_BACK","reasons":["FRONT_RECENTLY_CHECKED","BACK_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED","EPISODE_FOLLOW_UP"],"baseline_b":"—"},
       {"input":"同じ候補の続き（撮影予算2回を使い切り・記録しない）","proposed":"NONE","reasons":["EPISODE_FOLLOW_UP","EPISODE_BUDGET_EXHAUSTED"],"baseline_b":"—"}
+    ]},
+    {"id":"larva_stay","title":"幼虫が見えた方向をもう一度撮り、見えなくなったら別の方向を探す（3視点を仮定）","note":"『見えた』は画像AIの判定（未検証）で、幼虫の検出ではない。同じ方向は2分以内・連続3回まで。","steps":[
+      {"input":"振動候補（後ろで画像AIが『見えた』と判定）","proposed":"CAPTURE_BACK","reasons":["PASSIVE_CANDIDATE_NEW","BACK_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED"],"baseline_b":"CAPTURE_FRONT"},
+      {"input":"次の振動候補（20秒後・後ろでまた『見えた』）","proposed":"CAPTURE_BACK","reasons":["PASSIVE_CANDIDATE_NEW","MODEL_UNVERIFIED","LARVA_LAST_SEEN_HERE"],"baseline_b":"CAPTURE_FRONT"},
+      {"input":"次の振動候補（40秒後・後ろでは『見えない』）","proposed":"CAPTURE_BACK","reasons":["PASSIVE_CANDIDATE_NEW","MODEL_UNVERIFIED","LARVA_LAST_SEEN_HERE"],"baseline_b":"CAPTURE_FRONT"},
+      {"input":"同じ候補の続き（見えなくなったので別の方向へ）","proposed":"CAPTURE_FRONT","reasons":["BACK_RECENTLY_CHECKED","FRONT_NOT_RECENTLY_OBSERVED","MODEL_UNVERIFIED","EPISODE_FOLLOW_UP"],"baseline_b":"—"}
     ]}
   ]
 }

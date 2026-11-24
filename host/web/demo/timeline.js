@@ -11,9 +11,9 @@
 
 export const STEPS = [
   // labels: docs/Beetle_Life_Lab_Development_Demo_UI_Directive_20261120.md §3.1
-  {n: 1, label: '変化に気づく', tech: 'SENSE / 低周波の活動（フォレスト・比）', tone: 'observe', icon: 'vibration'},
+  {n: 1, label: '変化に気づく', tech: 'SENSE / 振動のきっかけ（フォレスト・比・B2）', tone: 'observe', icon: 'vibration'},
   {n: 2, label: 'これまでを確認', tech: 'REMEMBER / Evidence・Reducer', tone: 'observe', icon: 'history'},
-  {n: 3, label: '次を決める', tech: 'DECIDE / ルールベース方策 v3', tone: 'act', icon: 'alt_route'},
+  {n: 3, label: '次を決める', tech: 'DECIDE / ルールベース方策', tone: 'act', icon: 'alt_route'},
   {n: 4, label: 'カメラを動かす', tech: 'ACT / サーボ', tone: 'act', icon: 'precision_manufacturing'},
   {n: 5, label: '写真で確かめる', tech: 'OBSERVE / Vision V2で撮影', tone: 'observe', icon: 'photo_camera'},
   {n: 6, label: '観察を記録', tech: 'RECORD / Evidence・観察日記', tone: 'done', icon: 'menu_book'},
@@ -115,6 +115,32 @@ export function episodeVerdict(ep) {
   return {seen: false, text: `画像AI：${ais.length} 方向とも幼虫は見えないと判定`};
 }
 
+// ---- which source started the observation (display only) ----
+// Until 2026-11-22 every trigger was a B2 candidate (300-1500 Hz); on 2026-11-23 the 1-40 Hz activity
+// (forest or ratio >= 3); from 2026-11-24 either (activity_trigger.py). A trigger names what started
+// it in triggered_by; older records without it were B2. A trigger is not a larva detection.
+export const TRIGGER_JA = {FOREST: 'フォレスト', RATIO_3: '比', B2: 'B2'};
+/** x: an episode's trigger ({detector, by, ...}) or a raw candidate ({detector, triggered_by, ...}). */
+export function triggerOf(x) {
+  const t = x?.trigger || x;
+  if (!t || !(t.detector || t.by || t.triggered_by)) return null;  // e.g. the empty scene between episodes
+  const detector = t.detector || 'B2_guarded_mad', named = t.by || t.triggered_by || [];
+  const by = named.length ? named : detector === 'B2_guarded_mad' ? ['B2'] : [];
+  if (!by.length) return null;
+  const b2 = by.includes('B2');
+  return {by, band: b2 ? 'band' : 'low', short: by.map(b => TRIGGER_JA[b] || b).join('＋'),
+    forest_p: t.forest_p ?? null, ratio: t.ratio ?? null, b2_score: t.b2_score ?? (b2 ? t.peak_score ?? null : null)};
+}
+/** One line for the clue card: what started this observation, with its number. */
+export function triggerText(x) {
+  const tr = triggerOf(x);
+  if (!tr) return '';
+  if (tr.band === 'band') return `きっかけ：B2（300–1500 Hz の短い振動${tr.b2_score != null ? `・スコア ${tr.b2_score.toFixed(1)}` : ''}）`;
+  const parts = tr.by.map(b => b === 'FOREST' ? `フォレスト${tr.forest_p != null ? ` 確率 ${tr.forest_p.toFixed(2)}` : ''}` :
+    b === 'RATIO_3' ? `比${tr.ratio != null ? ` ×${tr.ratio.toFixed(1)}` : ' ≥3'}` : b);
+  return `きっかけ：1–40 Hz の低周波（${parts.join('・')}）`;
+}
+
 // ---- wording (user-facing first; codes go to the small technical line) ----
 const VIEW = () => globalThis.BllObservationView;
 const where = pose => (POSE_JA[pose] || pose || '?') + (pose === 'FIXED' ? '' : 'から');
@@ -131,12 +157,26 @@ const WAIT_WORDS = [
   ['TRIGGER_STALE', '少し前の揺れなので、今は撮りません'],
   ['SAFETY_BLOCKED', '安全のため、動かさずに待ちます'],
 ];
-export function whyText(step) {
+// 0.18.0: a look again where the image AI last saw the larva (its judgement, not a verified detection).
+export const isLarvaStay = step => (step?.reason_codes || []).includes('LARVA_LAST_SEEN_HERE');
+/** The stay needs no arm move: the first view of an episode at FRONT, where every episode parks,
+ *  or any view in hold mode (0.18.2: the arm waited there; ep.hold is set by the page).
+ *  Shown as a decision ("見えている場所では動かない"), so a still arm does not read as doing nothing. */
+export function staysPut(step, ep = null) {
+  return isLarvaStay(step) && (step.pose === 'FRONT' || !!ep?.hold) && (!ep?.steps || ep.steps[0] === step);
+}
+/** ep (optional): the episode, so a follow-up after a look where the larva was seen can say it was lost. */
+export function whyText(step, ep = null) {
   if (!step) return '';
   const codes = step.reason_codes || [];
   if (step.action !== 'WAIT' && !String(step.action || '').startsWith('CAPTURE_')) return '判断なし';
   if (step.action === 'WAIT') return (WAIT_WORDS.find(([c]) => codes.includes(c)) || [0, 'いまは撮影せずに待ちます'])[1];
   const p = step.pose;
+  if (staysPut(step, ep)) return `前回幼虫が見えた${where(p)}、アームを動かさずにもう一度確認します`;
+  if (isLarvaStay(step)) return `前回幼虫が見えた${where(p)}、もう一度確認します`;
+  const first = ep?.steps?.[0];
+  if (codes.includes('EPISODE_FOLLOW_UP') && first !== step && (first?.reason_codes || []).includes('LARVA_LAST_SEEN_HERE') && !aiOf(first)?.seen)
+    return `${where(first.pose)}は見えなくなったので、${where(p)}探します`;
   if (codes.includes('PREVIOUS_ATTEMPT_FAILED')) return `前回は撮影できなかったので、${where(p)}撮り直します`;
   if (codes.includes('EPISODE_FOLLOW_UP')) return `同じ揺れの続きとして、${where(p)}も確認します`;
   if (codes.includes(`${p}_NOT_RECENTLY_OBSERVED`)) return `${where(p)}はしばらく見ていないので、${where(p)}確認します`;
@@ -150,13 +190,14 @@ export function techText(step) {
 const NOT_SENT = {NOT_FORWARDED: 'この記録では観察係（MCU）に送っていません', not_sent_capture_failed: '撮影の失敗が続いていたため、観察係には送りませんでした',
   sending: '観察係の返事がありません', failed: '観察係に届きませんでした'};
 export function clueText(ep, mark) {
-  if (!mark) return {main: '見守り中：振動の反応を待っています', sub: ''};
+  if (!mark) return {main: '見守り中：振動の反応を待っています', sub: '', trigger: ''};
   const rise = ep.ch2_x == null ? '' : `ケースの中 ×${ep.ch2_x < 10 ? ep.ch2_x.toFixed(1) : Math.round(ep.ch2_x)}` +
     (ep.ch1_x == null ? '' : ` ／ ケースの外 ×${ep.ch1_x < 10 ? ep.ch1_x.toFixed(1) : Math.round(ep.ch1_x)}`) + '（直前5秒との比）';
   let arm = '';
   if (ep.arm) arm = ep.arm.relation === 'DURING' ? 'アームが動いている間の揺れです（自分の動きの音の可能性）' :
     `アームが止まって ${ep.arm.seconds} 秒後の揺れです（自分の動きの音の可能性）`;
-  return {main: mark.kind === 'SENSE' ? '振動の反応があります' : '振動の反応がありました', sub: [rise, arm].filter(Boolean).join('\n')};
+  return {main: mark.kind === 'SENSE' ? '振動の反応があります' : '振動の反応がありました', sub: [rise, arm].filter(Boolean).join('\n'),
+    trigger: triggerText(ep)};
 }
 export function resultText(ep, mark) {
   if (!mark) return '—';
@@ -164,10 +205,10 @@ export function resultText(ep, mark) {
   switch (mark.kind) {
     case 'SENSE': return '揺れの区間を記録しています';
     case 'DECIDE': return mark.pending ? '観察係（MCU）が、これまでの記録から次の行動を選んでいます' : mark.none ? (NOT_SENT[ep.delivery] || `観察係の返事：${ep.delivery}`) :
-      isCapture(step) ? `次は${where(mark.pose)}撮影します` : '判断を記録しました';
+      isCapture(step) ? (staysPut(step, ep) ? `このまま${where(mark.pose)}撮影します（アームは動かしません）` : `次は${where(mark.pose)}撮影します`) : '判断を記録しました';
     case 'WAIT': return '撮影せずに待機しました（理由も記録）';
     case 'MOVE': return `アームを${POSE_JA[mark.pose] || mark.pose}へ動かしています`;
-    case 'CAPTURE': return `${where(mark.pose)}撮影しています`;
+    case 'CAPTURE': return staysPut(step, ep) ? `アームはそのまま、${where(mark.pose)}撮影しています` : `${where(mark.pose)}撮影しています`;
     case 'RESULT': return step?.capture === 'SUCCESS' ? (aiOf(step) ? `${where(mark.pose)}の写真を記録 → 画像AI：${aiText(aiOf(step))}` : `${where(mark.pose)}の写真を記録しました`) :
       `撮影できませんでした${step?.capture_reason ? `（${step.capture_reason}）` : ''}。いない、という意味ではありません`;
     case 'PARK': return episodeVerdict(ep)?.text || '観察を終えて、アームを基本位置（前）へ戻しています';
@@ -180,5 +221,6 @@ export function episodeLabel(ep, index, clock) {
   const steps = ep.steps || [], caps = steps.filter(s => String(s.action || '').startsWith('CAPTURE_'));
   const kind = caps.length ? `撮影 ${caps.length} 方向（${caps.map(s => POSE_JA[s.pose] || s.pose).join('→')}）` :
     steps.some(s => s.action === 'WAIT') ? 'あえて待機（WAIT）' : '判断なし';
-  return `#${index + 1}  ${clock(ep.t_start_s)}  ${kind}`;
+  const tr = triggerOf(ep), stay = isLarvaStay(caps[0]) ? (staysPut(caps[0], ep) ? '  ・ 動かずに確認' : '  ・ 見えた方向へ') : '';
+  return `#${index + 1}  ${clock(ep.t_start_s)}  ${kind}${stay}${tr ? `  ・ きっかけ ${tr.short}` : ''}`;
 }

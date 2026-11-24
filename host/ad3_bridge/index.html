@@ -14,6 +14,7 @@
 <label><input id="wiring" type="checkbox">CH2=ピエゾ、GND・入力レンジを確認済み、Wavegen未接続、WaveFormsの計測を終了</label><br>
 <label><input id="forward" type="checkbox">振動イベントをエージェントの記憶（MCU）へ送り、観測ループを動かす</label>
 <label title="観察を判断するマイコン（Arduino Nano ESP32。以前は XIAO ESP32S3）">MCU <select id="port"></select></label>
+<label title="MCU のファームウェア 0.18.1 以降で切り替わります（それより前は、0.18.0 は追従、0.17.0 以前は探索のまま）">観察の方式 <select id="obsMode"><option value="follow">追従：幼虫が見えた方向をもう一度見る（見えなければ探す）</option><option value="hold">追従・その場で待つ：見えた方向でアームを止めて待つ（2分見えなければ基本位置へ。FW 0.18.2 以降）</option><option value="explore">探索：毎回、しばらく見ていない方向から見る（当初の方式）</option></select></label>
 <br><label><input id="video" type="checkbox">OBSで録画（計測の開始・終了に連動。PCの振り返り用で、検出・MCUには使いません）</label>
 <br><label>ケースID <select id="caseSelect" aria-label="登録済みのケース"><option value="">登録済みから選ぶ…</option></select> <input id="case" maxlength="128" placeholder="新しいIDも入力可"></label><label>セッションID <input id="session" maxlength="128"></label>
 <br><label>照明 <input id="illumination" list="lightList" maxlength="128" placeholder="例: LEDバー FRONT斜め／なし"></label><datalist id="lightList"></datalist>
@@ -36,7 +37,7 @@
 <table><thead><tr><th>#</th><th>区間（秒）</th><th>ピークRMS</th><th>ピークスコア</th><th title="候補区間の300–1500 Hz帯域RMS ÷ 直前5秒の中央値。参考値で、検出・MCUには使いません">対象 CH2 上昇</th><th title="同じ計算の参照センサーCH1（外乱・自分の動きの監視）">参照 CH1 上昇</th></tr></thead><tbody id="events"></tbody></table></section>
 <section><h3>判断と行動：見えないなら、観測方法を変える（ルールベースの方策・能動観測）</h3>
 <p><small>MCUが振動イベントを記憶（Evidenceログ）に保存した後、その履歴から次にどの視点を見るかを決めます（能動観測）。<b>判断は説明可能なルールベースの方策で、学習済みAIではありません。</b>撮影成功は「画像が撮れた」ことで、幼虫の検出ではありません。振動イベント候補は人工刺激（掘削）や外乱でも出ます。</small></p>
-<p><span id="observationMode" class="tag">MCU転送なし</span> <span id="modelMode" class="tag" hidden></span></p>
+<p><span id="observationMode" class="tag">MCU転送なし</span> <span id="modelMode" class="tag" hidden></span> <span id="obsModeTag" class="tag" hidden></span></p>
 <p><small>視覚モデルの欄は、Vision V2が撮影と同じフレームで出した推論です（未検証・参考）。方策の判断にもEvidenceログにも使いません。学習画像は固定カメラのみで、TOP・BACKは学習外の視点です。</small></p>
 <div class="compare">
 <div><h4>BASELINE B：反射的な方策（記憶なし・候補ごとに必ず撮影）</h4><div class="big" id="baselineCount">0 回</div><small>同じ振動候補に対し、直前の撮影や履歴を見ずに固定カメラで撮影した場合の回数</small></div>

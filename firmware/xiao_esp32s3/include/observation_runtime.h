@@ -9,6 +9,7 @@ void observationRun();                // "observe-run": the same step, operator 
 void observationStatus();             // "observe-status": state, view and a read-only preview
 void observationSetLight(const char* value);  // "observe-light ok|low|unknown" (RAM only)
 void observationSetVision(const char* value); // "observe-vision invoke|sample": capture frame source (RAM only)
+void observationSetMode(const char* value);   // "observe-mode follow|explore|hold": 0.18.1 (hold 0.18.2), RAM only (follow after boot)
 void observationPoll();               // loop hook: servo ramp/park and timed follow-up recheck
 void observationBegin();              // setup hook: servo pin held LOW (no pulses)
 void observationServoCommand(const char* line);  // "servo-*" operator commands

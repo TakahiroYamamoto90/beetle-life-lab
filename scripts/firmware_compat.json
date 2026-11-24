@@ -30,7 +30,10 @@
       "0.15.0-observation-lowfreq",
       "0.15.1-observation-lowfreq",
       "0.16.0-observation-lowfreq",
-      "0.17.0-observation-ai-stop"
+      "0.17.0-observation-ai-stop",
+      "0.18.0-observation-larva-stay",
+      "0.18.1-observation-mode",
+      "0.18.2-observation-hold"
     ]
   },
   "piezo_capture": {
@@ -63,7 +66,10 @@
       "0.15.0-observation-lowfreq",
       "0.15.1-observation-lowfreq",
       "0.16.0-observation-lowfreq",
-      "0.17.0-observation-ai-stop"
+      "0.17.0-observation-ai-stop",
+      "0.18.0-observation-larva-stay",
+      "0.18.1-observation-mode",
+      "0.18.2-observation-hold"
     ]
   }
 }

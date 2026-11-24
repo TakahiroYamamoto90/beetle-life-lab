@@ -12,6 +12,6 @@ $('mode').onchange=mode;
 $('seconds').onchange=draw;
 $('scale').onchange=draw;
 window.addEventListener('resize',draw);
-$('form').onsubmit=async e=>{e.preventDefault();$('error').textContent='';try{await api('/api/start',{mode:$('mode').value,duration_s:Number($('duration').value),device_index:Number($('device').value||0),range_v:Number($('range').value),wiring_confirmed:$('wiring').checked,forward:$('forward').checked,video:$('video').checked,port:$('port').value,case_id:$('case').value.trim(),session_id:$('session').value,note:$('note').value,illumination:$('illumination').value.trim()});await poll()}catch(err){$('error').textContent=err.message}};
+$('form').onsubmit=async e=>{e.preventDefault();$('error').textContent='';try{await api('/api/start',{mode:$('mode').value,duration_s:Number($('duration').value),device_index:Number($('device').value||0),range_v:Number($('range').value),wiring_confirmed:$('wiring').checked,forward:$('forward').checked,observation_mode:$('obsMode').value,video:$('video').checked,port:$('port').value,case_id:$('case').value.trim(),session_id:$('session').value,note:$('note').value,illumination:$('illumination').value.trim()});await poll()}catch(err){$('error').textContent=err.message}};
 $('stop').onclick=async()=>{try{await api('/api/stop',{});}catch(err){$('error').textContent=err.message}};
 }

@@ -118,6 +118,7 @@ void handleLine() {
     else if (std::strcmp(line, "observe-run") == 0) observationRun();
     else if (std::strncmp(line, "observe-light ", 14) == 0) observationSetLight(line + 14);
     else if (std::strncmp(line, "observe-vision ", 15) == 0) observationSetVision(line + 15);
+    else if (std::strncmp(line, "observe-mode ", 13) == 0) observationSetMode(line + 13);
     else Serial.println("OBSERVATION_ERROR reason=unknown_command");
 #endif
 #ifdef BLL_VISION_BRINGUP
@@ -278,7 +279,7 @@ void loop() {
     Serial.println("COMMANDS adc-start [seconds] | adc-stop (no seconds = unlimited)");
 #ifdef BLL_EVIDENCE_STORE
     Serial.println("COMMANDS evidence-status | evidence-diag | evidence-read <after_index> | evidence-init-empty");
-    Serial.println("COMMANDS observe-status | observe-run | observe-light <ok|low|unknown> | observe-vision <invoke|sample>");
+    Serial.println("COMMANDS observe-status | observe-run | observe-light <ok|low|unknown> | observe-vision <invoke|sample> | observe-mode <follow|explore|hold>");
     Serial.println("COMMANDS servo-status | servo-us <us> | servo-pose <FRONT|TOP|BACK> | servo-cal <FRONT|TOP|BACK> <us|0> | servo-off");
     Serial.println("COMMANDS passive-candidate <run> <seq> <start_ms> <end_ms> <peak_uV> <score_milli> <config_sha256> | passive-check <same fields>");
     Serial.println("COMMANDS lowfreq-begin <run8> <ad3_ms> | lowfreq-anchor <ad3_ms> | lowfreq-rms <t_ms> <ch1_nV> <ch2_nV> | lowfreq-end (reference only)");

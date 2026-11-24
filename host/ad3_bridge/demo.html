@@ -19,13 +19,14 @@
   <div class="video" id="videoBox"><div class="vwrap" id="vwrap"><video id="video" muted playsinline preload="auto"></video></div>
    <div class="novideo" id="noVideo" hidden>この記録には外部カメラの動画がありません</div>
    <span class="vlabel"><span class="ms" aria-hidden="true">videocam</span><span id="vlabelText">実機の映像（記録の動画・OBS）</span></span>
-   <span class="armstate" id="armState" hidden></span></div>
+   <span class="armstate" id="armState" hidden></span>
+   <div class="vibe" id="vibe" hidden role="status"><span class="vring" aria-hidden="true"><span class="ms">vibration</span></span><span class="vtext"><b>振動をキャッチ</b><small id="vibeTrig"></small><small id="vibeNext" class="vnext"></small></span></div></div>
   <aside class="side">
    <div class="panel memory" id="memPanel"><h2><span class="ms" aria-hidden="true">history</span>記憶 <small>これまでの観察（Evidence）と、いまの状態（Reducer・記録から再構成した表示用の要約）</small></h2>
     <div class="mbody" id="memBody"></div>
     <div class="mnote">◀ MCU が判断の理由に使った状態　★ 今回の決め手　・ 判断の時刻は記録からの目安</div></div>
    <div class="panel wave"><h2><span class="ms" aria-hidden="true">graphic_eq</span>振動の手がかり <small id="waveLabel">ケース内ピエゾ CH2 の 1–40 Hz 低周波の振幅（RMS 250 ms、対数）</small></h2><canvas id="wave" width="760" height="300"></canvas>
-    <div class="legend"><span class="in">ケースの中</span><span class="out">ケースの外（参照）</span><span class="cand">撮影のきっかけ</span><span class="arm">アームの動作</span><span class="low">低周波の活動らしさ</span></div></div>
+    <div class="legend"><span class="in">ケースの中</span><span class="out">ケースの外（参照）</span><span class="cand">撮影のきっかけ（B2／フォレスト／比）</span><span class="arm">アームの動作</span><span class="low">低周波の活動らしさ</span></div></div>
    <div class="panel shot"><h2><span class="ms" aria-hidden="true">photo_camera</span>撮影した画像 <small>Vision V2（240×240）・実機映像とは別のカメラ</small></h2>
     <div class="shotrow"><div class="big"><img id="shotImg" alt="" hidden><span id="shotAi" class="aibadge" hidden></span><div id="shotEmpty" class="empty"><span class="ms" aria-hidden="true">no_photography</span>まだ撮影していません</div><span id="shotCap" class="cap"></span><span class="spotlabel">撮影画像を拡大</span></div>
      <div class="views" id="views"></div></div></div>
@@ -37,11 +38,11 @@
     <button id="flowClose" type="button" aria-label="閉じる">×</button><button id="flowDock" type="button" title="映像と並べて下に表示（上の見出しと下のカードを隠す）">↓</button></div>
    <div class="fbody"><svg id="flowSvg" aria-hidden="false"></svg>
     <div class="finfo"><div class="fnow" id="flowNow"></div><div class="ftext" id="flowText"></div><div class="fwhy" id="flowWhy"></div><div class="fcount" id="flowCount"></div><div class="fmem" id="flowMem" hidden></div>
-     <div class="fnote">状態をクリックすると、その時刻へ移動します。記録の順序に基づく概念図です（ファームウェア内部の状態機械そのものではありません）。判断はルールベースで、画像AIが幼虫を見つけたら残りの方向の撮影を省きます。</div></div></div>
+     <div class="fnote">状態をクリックすると、その時刻へ移動します。記録の順序に基づく概念図です（ファームウェア内部の状態機械そのものではありません）。判断はルールベースで、画像AIが幼虫を見つけたら残りの方向の撮影を省き、次の揺れではまずその方向をもう一度見ます（ファームウェア 0.18.0 から。2分以内・連続3回まで）。</div></div></div>
   </div>
  </section>
  <section class="bottom">
-  <div class="card clue"><h3><span class="ms" aria-hidden="true">sensors</span>見つけた手がかり</h3><div class="main"><span class="ms big" id="clueIcon" aria-hidden="true"></span><span id="clueMain"></span></div><div class="sub" id="clueSub"></div><div class="sub human" id="clueHuman" hidden></div><div class="sub lowline" id="clueLow" hidden></div></div>
+  <div class="card clue"><h3><span class="ms" aria-hidden="true">sensors</span>見つけた手がかり</h3><div class="main"><span class="ms big" id="clueIcon" aria-hidden="true"></span><span id="clueMain"></span></div><div class="sub trig" id="clueTrig" hidden></div><div class="sub" id="clueSub"></div><div class="sub human" id="clueHuman" hidden></div><div class="sub lowline" id="clueLow" hidden></div></div>
   <div class="card why"><h3><span class="ms" aria-hidden="true">lightbulb</span>なぜそうした？</h3><div class="main"><span class="ms big" id="whyIcon" aria-hidden="true"></span><span id="whyMain"></span></div><div class="sub" id="whySub"></div><div class="tech" id="whyTech"></div></div>
   <div class="card result"><h3><span class="ms" aria-hidden="true">task_alt</span>どうなった？</h3><div class="main"><span class="ms big" id="resultIcon" aria-hidden="true"></span><span id="resultMain"></span></div><div class="sub" id="resultSub"></div><div class="sub human" id="resultHuman" hidden></div></div>
  </section>
@@ -56,7 +57,7 @@
  <label>場面 <select id="episode"></select></label>
  <button id="prev" type="button" title="前の場面">◀</button><button id="next" type="button" title="次の場面">▶</button>
  <button id="play" type="button">▶ 再生</button><button id="rewind" type="button">先頭へ</button>
- <label title="振動グラフに表示する帯域">振動グラフ <select id="waveSel"><option value="low">1–40 Hz</option><option value="band">300–1500 Hz</option></select></label>
+ <label title="振動グラフに表示する帯域">振動グラフ <select id="waveSel"><option value="auto">きっかけの帯域</option><option value="low">1–40 Hz</option><option value="band">300–1500 Hz</option></select></label>
  <label>速度 <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
  <input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置">
  <label title="動画の音（人の声が入るため初期は消音）"><input id="sound" type="checkbox">音を出す</label>

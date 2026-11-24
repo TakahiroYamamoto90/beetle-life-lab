@@ -43,6 +43,9 @@ MAX_DELIVERY_S = ACK_TIMEOUT_S + OBSERVATION_TIMEOUT_S + MAX_FOLLOW_UPS * FOLLOW
 MAX_OBSERVATION_LINE = 512 * 1024  # one base64 JPEG event line
 VISION_INSPECT_TIMEOUT_S = 20  # six SSCMA queries, 5 s each at worst on a dead link
 LOWFREQ_REPLY_TIMEOUT_S = 2.0  # one lowfreq-* line; the XIAO answers within its next loop turn
+MODE_REPLY_TIMEOUT_S = 2.0     # one observe-mode line (firmware 0.18.1+)
+# follow / explore: 0.18.1+; hold (follow, and the arm waits where the larva was seen): 0.18.2+
+OBSERVATION_MODES = ('follow', 'explore', 'hold')
 
 
 def _json_line(line, prefix):
@@ -267,6 +270,38 @@ class XiaoLink:
                 if noted:
                     self.actuation.append(noted)
         raise TimeoutError('LOWFREQ_REPLY_TIMEOUT')
+
+    def set_mode(self, mode):
+        """'observe-mode follow|explore' (firmware 0.18.1+, RAM only on the MCU): follow looks again
+        where the image AI last saw the larva (0.18.0 rule), explore takes the views not seen
+        recently (until 0.17.0). Returns the mode the MCU confirmed, or None when the firmware
+        does not know the command (0.18.0 always follows, 0.17.0 and older always explore)."""
+        if mode not in OBSERVATION_MODES:
+            raise ValueError('mode must be follow, explore or hold')
+        wire = f'observe-mode {mode}\n'.encode('ascii')
+        if self.port.write(wire) != len(wire):
+            raise RuntimeError('Partial serial write')
+        self.port.flush()
+        deadline = time.monotonic() + MODE_REPLY_TIMEOUT_S
+        pending = bytearray()
+        while time.monotonic() < deadline:
+            pending.extend(self.port.readline(2048))
+            if len(pending) > 8192:
+                raise RuntimeError('Oversize serial response')
+            while b'\n' in pending:
+                raw, _, tail = pending.partition(b'\n')
+                pending = bytearray(tail)
+                line = raw.decode('utf-8', errors='replace').strip()
+                if line.startswith('OBSERVATION_MODE mode='):
+                    return line.split('=', 1)[1].strip()
+                if line == 'OBSERVATION_ERROR reason=unknown_command' or line.startswith('ECHO observe-mode'):
+                    return None
+                if line.startswith('OBSERVATION_ERROR'):
+                    raise RuntimeError(line)
+                noted = actuation_line(line, late_read_possible=True)
+                if noted:
+                    self.actuation.append(noted)
+        raise TimeoutError('MODE_REPLY_TIMEOUT')
 
     def watch_park(self, stop, max_s=PARK_WATCH_S):
         """After an episode that moved the arm, keep reading only to note when the XIAO's park

@@ -29,6 +29,7 @@ export function renderObservations(s){
  $('proposedCount').textContent=`撮影 ${c.proposedCaptures} 回 / 待機 ${c.proposedWaits} 回`;
  const list=s.observations||[],latest=list[list.length-1];
  if(latest){$('latestWhy').textContent=`なぜこの行動？ — ${V.whyText(latest)}`;$('latestResult').textContent=V.resultText(latest)}
+ const om=$('obsModeTag'),o=s.observation_mode,oj={follow:'追従（見えた方向をもう一度）',hold:'追従・その場で待つ（見えた方向でアームを止める）',explore:'探索（しばらく見ていない方向から）'};om.hidden=!o;if(o){om.textContent=o.status==='ERROR'?'観察の方式：MCUに設定できませんでした（'+o.error+'）':'観察の方式：'+(oj[o.effective]||o.effective)+(o.status==='UNSUPPORTED_FIRMWARE'?(o.effective!==o.requested?'（このFWは切り替え未対応のため、選んだ方式では動きません）':'（このFWの固定の方式）'):'');om.className='tag'+(o.status!=='APPLIED'&&o.effective!==o.requested?' mock':'')}
  const mm=$('modelMode'),mtext=V.modelStatusText(s.vision_model);mm.textContent=mtext;mm.hidden=!mtext;mm.className='tag'+(s.vision_model&&s.vision_model.status!=='VERIFIED'?' mock':'');
  const shot=[...list].reverse().find(o=>o.image_url);
  if(shot){$('latestImage').src=shot.image_url;orient($('latestImage'),observationPose(shot));$('latestImage').hidden=false;$('latestImage').title=shot.image_verified?'MCUのハッシュと一致':'ハッシュ不一致または未検証';$('latestModel').textContent=V.modelText(shot);$('latestPose').textContent=`最新の画像：${V.poseText(shot)}`}

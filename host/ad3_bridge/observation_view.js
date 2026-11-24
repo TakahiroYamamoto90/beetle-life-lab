@@ -35,6 +35,7 @@
     EPISODE_BUDGET_EXHAUSTED: 'この候補での撮影回数の上限に到達',
     SELF_ACTUATION_RECENT: 'アームが動いた直後のため待機（自分の動きによるノイズ＝ego-noiseの可能性）',
     LARVA_VISIBLE_STOP: '画像AIが幼虫を見つけたため、残りの方向は撮影しない',
+    LARVA_LAST_SEEN_HERE: '前回、画像AIが幼虫を見つけた方向をもう一度確認（2分以内・連続3回まで）',
   });
 
   const ACTION_TEXT = Object.freeze({

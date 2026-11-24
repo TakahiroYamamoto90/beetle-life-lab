@@ -35,9 +35,11 @@ export function liveState(s, heldSince = null) {
   const ctx = cand?.context || {};
   const ep = {candidate_seq: seq, t_start_s: cand?.t_start_s, t_end_s: cand?.t_end_s, ch2_x: ctx.ch2_x ?? null,
     ch1_x: ctx.ch1_x ?? null, steps, answers: [], arm: null,
+    // what started this trigger (B2 or the 1-40 Hz forest/ratio), shown on the clue card and graph
+    trigger: cand ? {detector: cand.detector, by: cand.triggered_by, forest_p: cand.forest_p, ratio: cand.ratio, peak_score: cand.peak_score} : null,
     delivery: !s.forwarding ? 'NOT_FORWARDED' : steps.length ? 'acknowledged' : 'sending'};
   if (!s.running) return {ep, mark: null};
-  if (s.detector_state === 'CANDIDATE') return {ep: {...ep, steps: [], ch2_x: null, ch1_x: null}, mark: {kind: 'SENSE'}};
+  if (s.detector_state === 'CANDIDATE') return {ep: {...ep, steps: [], ch2_x: null, ch1_x: null, trigger: null}, mark: {kind: 'SENSE'}};
   if (seq == null) return {ep, mark: null};
   const arm = s.arm_live || [], last = arm[arm.length - 1];
   const working = s.delivering != null;

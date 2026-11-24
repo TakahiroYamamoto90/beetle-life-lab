@@ -18,8 +18,8 @@ constexpr unsigned kPoseCount = 4;
 // v2: per-trigger observation episode (follow-up views, capture budget).
 // policy v3: FRONT-first view order (FRONT is the arm's home pose) and a new trigger
 // arriving during/just after the device's own servo motion waits (SELF_ACTUATION_RECENT).
-constexpr char kReducerVersion[] = "temporal-reducer-v2";
-constexpr char kPolicyVersion[] = "observation-policy-v3";
+constexpr char kReducerVersion[] = "temporal-reducer-v3";   // v3 (0.18.0): last VISIBLE_LARVA view + streak
+constexpr char kPolicyVersion[] = "observation-policy-v4";  // v4 (0.18.0): look again where the larva was seen
 
 enum class Origin : uint8_t { Live, Recorded, Synthetic };
 enum class EventType : uint8_t {
@@ -185,6 +185,12 @@ struct TemporalState {
   uint32_t episodeCaptures = 0;
   bool episodeLastCaptureOk = false;  // newest result of this episode was an image
   bool episodeLarvaVisible = false;   // 0.17.0: an image of this episode was classed VISIBLE_LARVA
+  // 0.18.0: the view whose newest image the Vision model classed VISIBLE_LARVA (model output,
+  // not a verified detection) and how many images of that view in a row did. Cleared when an
+  // image of that view no longer does; the streak restarts at 1 after an image of another view.
+  EvidenceRef lastLarvaSeen;
+  Pose lastLarvaPose = Pose::Fixed;
+  uint32_t larvaSeenStreak = 0;
 };
 
 enum class ApplyResult : uint8_t { Applied, AlreadyApplied, Gap, ForeignOrigin };
@@ -259,6 +265,19 @@ inline ApplyResult reduce(TemporalState& s, const CommittedEvent& e) {
       if (e.capture == CaptureOutcome::Success) {
         s.lastSuccessByPose[p] = ref;
         s.consecutiveCaptureFailures = 0;
+        const bool sameView = s.lastLarvaSeen.present && s.lastLarvaPose == e.pose;
+        if (e.larvaVisible) {
+          s.larvaSeenStreak = sameView ? s.larvaSeenStreak + 1 : 1;
+          s.lastLarvaSeen = ref;
+          s.lastLarvaPose = e.pose;
+        } else if (sameView) {
+          s.lastLarvaSeen = EvidenceRef();  // no longer seen there: explore again
+          s.larvaSeenStreak = 0;
+        } else if (s.lastLarvaSeen.present) {
+          // Another view was checked (e.g. after maxLarvaStays): the next trigger may return
+          // there for another run of stays, counted from the sighting again.
+          s.larvaSeenStreak = 1;
+        }
       } else {
         ++s.consecutiveCaptureFailures;
       }
@@ -303,6 +322,9 @@ struct TemporalStateView {
   // intent is open: the episode may continue with another view (budget permitting).
   bool followUp = false;
   bool episodeLarvaVisible = false;  // copied from the state (0.17.0)
+  AgeInfo larvaSeen;                 // 0.18.0: age of the newest VISIBLE_LARVA image (model output)
+  Pose larvaPose = Pose::Fixed;
+  uint32_t larvaSeenStreak = 0;
   AgeInfo trigger, lastAttempt;
   AgeInfo successByPose[kPoseCount], attemptByPose[kPoseCount];
   AgeInfo visualMovement;
@@ -315,6 +337,9 @@ inline TemporalStateView makeView(const TemporalState& s, const ClockContext& c)
   v.followUp = !v.pending && s.lastPassive.present && !s.intent.open && s.episodeCaptures > 0 &&
                s.episodeLastCaptureOk && strcmp(s.episodeTrigger, s.lastPassive.eventId) == 0;
   v.episodeLarvaVisible = s.episodeLarvaVisible;
+  v.larvaSeen = ageOf(s.lastLarvaSeen, c);
+  v.larvaPose = s.lastLarvaPose;
+  v.larvaSeenStreak = s.larvaSeenStreak;
   v.trigger = ageOf(s.lastPassive, c);
   v.lastAttempt = ageOf(s.lastAttempt, c);
   for (unsigned i = 0; i < kPoseCount; ++i) {
@@ -353,8 +378,9 @@ enum Reason : uint32_t {
   kEpisodeBudgetExhausted   = 1u << 28,  // per-trigger capture budget used up
   kSelfActuationRecent      = 1u << 29,  // trigger may be the device's own servo vibration
   kLarvaVisibleStop         = 1u << 30,  // 0.17.0: the image AI saw the larva; no further views
+  kLarvaLastSeenHere        = 1u << 31,  // 0.18.0: look again where the image AI last saw the larva
 };
-constexpr unsigned kReasonBits = 31;
+constexpr unsigned kReasonBits = 32;
 
 inline uint32_t recentlyChecked(Pose p) { return kRecentlyChecked0 << static_cast<unsigned>(p); }
 inline uint32_t notRecentlyObserved(Pose p) { return kNotRecentlyObserved0 << static_cast<unsigned>(p); }
@@ -371,7 +397,7 @@ inline const char* reasonCode(unsigned bit) {
     "FIXED_NOT_RECENTLY_OBSERVED", "FRONT_NOT_RECENTLY_OBSERVED", "TOP_NOT_RECENTLY_OBSERVED",
     "BACK_NOT_RECENTLY_OBSERVED", "BASELINE_EVERY_CANDIDATE", "MODEL_UNVERIFIED",
     "EPISODE_FOLLOW_UP", "EPISODE_BUDGET_EXHAUSTED", "SELF_ACTUATION_RECENT",
-    "LARVA_VISIBLE_STOP",
+    "LARVA_VISIBLE_STOP", "LARVA_LAST_SEEN_HERE",
   };
   return bit < sizeof(names) / sizeof(names[0]) ? names[bit] : nullptr;
 }
@@ -401,6 +427,16 @@ struct PolicyConfig {
   // 0.17.0 (user decision 2026-11-23): once an image of the episode is classed VISIBLE_LARVA
   // (score >= 80, see config.h), the remaining views are skipped. false = visit all views.
   bool stopWhenLarvaVisible = true;
+  // 0.18.0 (user decision 2026-11-24): a new trigger first looks again at the view where the
+  // image AI saw the larva within larvaStayMs, at most maxLarvaStays times in a row; if the larva
+  // is not seen there, the episode explores the other views as before. false = always explore.
+  bool stayWhereLarvaSeen = true;
+  uint32_t larvaStayMs = 120000;
+  uint32_t maxLarvaStays = 3;
+  // 0.18.2 (user decision 2026-11-24, mode "hold"): after an episode the arm stays at the view the
+  // next trigger would look at again (holdArmAt) instead of parking at FRONT; it parks once that no
+  // longer applies (larvaStayMs passed, the streak limit reached, or the larva was lost there).
+  bool holdWhereLarvaSeen = false;
   // FRONT is the arm's home pose (0 deg), TOP 90 deg, BACK 180 deg: this order visits the
   // views with the least arm travel. FIXED is the legacy fixed mount (same field as FRONT).
   Pose order[kPoseCount] = {Pose::Front, Pose::Top, Pose::Back, Pose::Fixed};
@@ -452,6 +488,33 @@ inline ViewChoice chooseView(const TemporalStateView& v, const PolicyCapabilitie
   plan.pose = target;
   plan.reasons |= notRecentlyObserved(target) | kModelUnverified;
   return ViewChoice::Chosen;
+}
+
+// 0.18.0: the first view of a new trigger is the one where the image AI last saw the larva,
+// if that was within cfg.larvaStayMs (same boot) and fewer than maxLarvaStays looks in a row
+// have already found it there. The streak counts the sighting that started it, so
+// larvaSeenStreak <= maxLarvaStays allows maxLarvaStays stays. Ignores view recency on purpose.
+inline bool chooseLarvaView(const TemporalStateView& v, const PolicyCapabilities& caps,
+                            const PolicyConfig& cfg, ActionPlan& plan) {
+  const unsigned p = static_cast<unsigned>(v.larvaPose);
+  if (!cfg.stayWhereLarvaSeen || !v.larvaSeen.comparable || v.larvaSeen.ageMs > cfg.larvaStayMs ||
+      v.larvaSeenStreak == 0 || v.larvaSeenStreak > cfg.maxLarvaStays || p >= kPoseCount || !caps.pose[p])
+    return false;
+  plan.action = captureFor(v.larvaPose);
+  plan.pose = v.larvaPose;
+  plan.reasons |= kLarvaLastSeenHere | kModelUnverified;
+  return true;
+}
+
+// 0.18.2: where the arm should wait after an episode instead of parking at FRONT (mode "hold"):
+// exactly the view chooseLarvaView would pick for the next trigger. false = park as before.
+inline bool holdArmAt(const TemporalStateView& v, const PolicyCapabilities& caps,
+                      const PolicyConfig& cfg, Pose& pose) {
+  if (!cfg.holdWhereLarvaSeen) return false;
+  ActionPlan probe;
+  if (!chooseLarvaView(v, caps, cfg, probe)) return false;
+  pose = probe.pose;
+  return true;
 }
 
 // Continue an episode with another view. Silent (decide=false) unless a capture is
@@ -513,6 +576,7 @@ inline ActionPlan decide(const TemporalState& s, const TemporalStateView& v,
   if (v.lastAttempt.comparable && v.lastAttempt.ageMs < cfg.cameraCooldownMs)
     return waitPlan(plan, kCameraCooldownActive);
 
+  if (chooseLarvaView(v, caps, cfg, plan)) return plan;
   const ViewChoice choice = chooseView(v, caps, cfg, plan);
   if (choice == ViewChoice::NoneAvailable) return waitPlan(plan, kNoCalibratedView);
   if (choice == ViewChoice::AllRecent) return waitPlan(plan, kAllViewsRecentlyChecked);

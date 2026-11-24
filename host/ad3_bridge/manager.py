@@ -19,6 +19,7 @@ import numpy as np
 from acquisition import WaveForms, SAMPLE_RATE
 from obs_record import ObsRecorder, collect_recording
 from processing import Processor
+import protocol
 from protocol import XiaoLink, read_evidence_snapshot, MAX_DELIVERY_S
 import lowfreq_link
 
@@ -69,6 +70,21 @@ def save_observation_image(directory, action_id, encoded, expected_sha256, model
         metadata['vision_model_output'] = model_output  # reference only, separate from any label
     (folder / f'{action_id}.json').write_text(json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
     return verified
+
+
+def observation_mode(link, requested):
+    """Ask the MCU for the observation mode of this acquisition (firmware 0.18.1+) and say which
+    one is in force. follow: look again where the image AI last saw the larva (0.18.0 rule);
+    explore: the views not seen recently. Firmware without the command keeps its own rule:
+    0.18.0 (policy v4) follows, older firmware explores. Never stops the acquisition."""
+    builtin = 'follow' if (link.state or {}).get('observation_policy') == 'observation-policy-v4' else 'explore'
+    try:
+        applied = link.set_mode(requested) if hasattr(link, 'set_mode') else None
+    except (OSError, RuntimeError, TimeoutError) as exc:
+        return dict(requested=requested, effective=None, status='ERROR', error=f'{type(exc).__name__}: {exc}')
+    if applied:
+        return dict(requested=requested, effective=applied, status='APPLIED')
+    return dict(requested=requested, effective=builtin, status='UNSUPPORTED_FIRMWARE')
 
 
 class BridgeManager:
@@ -215,6 +231,8 @@ class BridgeManager:
             raise ValueError('video must be true or false')
         if forward and (not isinstance(port, str) or not port):
             raise ValueError('XIAO port is required for forwarding')
+        if request.get('observation_mode', 'follow') not in protocol.OBSERVATION_MODES:
+            raise ValueError('observation_mode must be follow, explore or hold')
         index, range_v = request.get('device_index', 0), request.get('range_v', 5)
         if type(index) is not int or index < 0 or type(range_v) not in (int, float) or range_v not in (.5, 1, 2, 5, 10):
             raise ValueError('Invalid AD3 device or voltage range')
@@ -243,7 +261,7 @@ class BridgeManager:
                               candidate_count=0, detector_state='WARMUP', detector_resets=0, forwarding=forward,
                               current_activity='UNKNOWN', time_quality='UNSYNCED',
                               observation_supported=None, baseline_b_captures=0,
-                              proposed_captures=0, proposed_waits=0, vision_model=None,
+                              proposed_captures=0, proposed_waits=0, vision_model=None, observation_mode=None,
                               video=dict(status='REQUESTED' if request.get('video') else 'OFF'))
             self.thread = threading.Thread(target=self._guarded_run, args=(dict(request), dict(self.state)), daemon=True)
             self.thread.start()
@@ -453,6 +471,9 @@ class BridgeManager:
                 manifest['xiao_initial_state'] = link.state
                 if hasattr(link, 'lowfreq'):
                     low = lowfreq_link.LowFreqForwarder(run_id, directory, SAMPLE_RATE)
+                if getattr(link, 'observation_supported', False):
+                    manifest['observation_mode'] = observation_mode(link, request.get('observation_mode', 'follow'))
+                    self.update(observation_mode=manifest['observation_mode'])
                 if getattr(link, 'observation_supported', False) and hasattr(link, 'read_vision_model'):
                     # Identify the deployed Vision model once, before any candidate; its
                     # outputs are labelled with this check (reference only).

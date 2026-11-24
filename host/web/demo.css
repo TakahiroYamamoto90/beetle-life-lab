@@ -145,6 +145,8 @@ body.flowdock .mstate,.fmem .mstate{gap:4px}
 .legend span::before{content:"";display:inline-block;width:18px;height:8px;border-radius:3px;margin-right:6px;vertical-align:middle}
 .legend .in::before{background:var(--in)}.legend .out::before{background:var(--out)}.legend .cand::before{background:var(--cand);outline:1px solid var(--act)}.legend .arm::before{background:var(--arm)}.legend .low::before{background:var(--low)}
 .card .lowline{color:var(--low);margin-top:4px}
+.card .sub.trig{color:var(--act);font-weight:700}
+#waveLabel b{color:var(--act);font-weight:700}
 .shotrow{display:grid;grid-template-columns:auto 1fr;gap:16px;flex:1;min-height:0}
 .shot .big{aspect-ratio:1/1;height:100%}
 .shot .big{position:relative;border-radius:12px;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}
@@ -224,6 +226,19 @@ body.noicons .ms{display:none}
 .view.ok small .ms{color:var(--done)}.view.fail small .ms{color:#f0a089}.view.now small .ms{color:var(--act)}
 .shot .big .empty .ms{display:block;font-size:44px;margin:0 auto 6px;text-align:center}
 .armstate .ms{color:var(--act)}
+/* trigger overlay: the vibration that started an observation (capture / arm move) */
+.vibe{position:absolute;right:18px;top:14px;display:flex;align-items:center;gap:16px;padding:12px 22px 12px 14px;border-radius:18px;background:rgba(9,38,36,.92);border:3px solid var(--observe);box-shadow:0 6px 24px rgba(0,0,0,.45)}
+.vibe[hidden]{display:none}
+.vibe .vring{position:relative;display:grid;place-items:center;width:72px;height:72px;border-radius:50%;background:rgba(60,196,180,.18);animation:vpulse 1s ease-out infinite}
+.vibe .vring .ms{font-size:52px;color:var(--observe);animation:vshake .25s linear infinite}
+.vibe .vtext{display:flex;flex-direction:column;gap:2px}
+.vibe .vtext b{font-size:30px;line-height:1.15}
+.vibe .vtext small{font-size:18px;color:var(--ink)}
+.vibe .vtext .vnext{color:var(--act);font-weight:700}
+.vibe.wait{border-color:var(--wait)}.vibe.wait .vnext{color:var(--muted)}
+@keyframes vpulse{0%{box-shadow:0 0 0 0 rgba(60,196,180,.75)}100%{box-shadow:0 0 0 26px rgba(60,196,180,0)}}
+@keyframes vshake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px) rotate(-6deg)}75%{transform:translateX(3px) rotate(6deg)}}
+@media (prefers-reduced-motion: reduce){.vibe .vring,.vibe .vring .ms{animation:none}}
 .vlabel .ms,.replay .ms{font-size:1.1em}
 /* source switch: recorded replay (default) / live camera + current bridge state */
 .controls .replayctl{display:contents}

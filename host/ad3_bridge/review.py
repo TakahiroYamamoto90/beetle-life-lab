@@ -235,6 +235,16 @@ def arm_shots(path, manifest, xiao_times=None):
     return shots
 
 
+def trigger_of(candidate):
+    """What started one observation trigger, for display (demo page): until 2026-11-22 always B2,
+    on 2026-11-23 the 1-40 Hz activity (FOREST and/or RATIO_3), from 2026-11-24 either; the record's
+    triggered_by names it (older records without it were B2). Not a larva detection."""
+    detector = candidate.get('detector') or 'B2_guarded_mad'
+    by = candidate.get('triggered_by') or (['B2'] if detector == 'B2_guarded_mad' else [])
+    return dict(detector=detector, by=by, forest_p=candidate.get('forest_p'), ratio=candidate.get('ratio'),
+                b2_score=candidate.get('peak_score') if 'B2' in by else None)
+
+
 def ai_of(step):
     """The Vision V2 model output of one capture step, for display (demo page): class, raw score
     (0-100, not calibrated) and recipe. The record itself keeps presence UNKNOWN."""
@@ -663,6 +673,8 @@ class ReviewStore:
                     candidate_detector=(manifest.get('observation_trigger') or {}).get('detector') or
                     (candidates[0]['detector'] if candidates else 'B2_guarded_mad'),
                     video=self.video_info(path, manifest, saved_offset),
+                    # 0.18.1: follow / explore as sent to the MCU (None: older run, MCU's own rule)
+                    observation_mode=manifest.get('observation_mode'),
                     live_marks=read_jsonl(path / 'annotations.jsonl'),
                     review_marks=marks, review_status=review_status(path),
                     shots=arm_shots(path, manifest, self.xiao_times()),
@@ -1081,6 +1093,7 @@ class ReviewStore:
             clip = [max(0.0, a - 5), min(end, last + 3 if last > b else b + 10)]
             items.append(dict(
                 candidate_seq=c.get('candidate_seq'), t_start_s=a, t_end_s=b, peak_score=c.get('peak_score'),
+                trigger=trigger_of(c),
                 **cc.band_ratios(t, ch2, ch1, a, b, [s for s in spans if s != (a, b)]),
                 delivery=record.get('status') or 'NOT_FORWARDED', steps=steps, answers=answers,
                 arm=actuation_near(arm, a, b),

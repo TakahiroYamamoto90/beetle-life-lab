@@ -95,13 +95,17 @@ export function renderMemory(box, {history, state, used, t, clock, rows = 6, com
   };
   for (const p of POSES) {
     const v = state.views[p], recent = codes.includes(`${p}_RECENTLY_CHECKED`), notRecent = codes.includes(`${p}_NOT_RECENTLY_OBSERVED`);
+    // 0.18.0: the decision went back to where the image AI last saw the larva
+    const seenHere = codes.includes('LARVA_LAST_SEEN_HERE') && used.pose === p;
     const value = v ? (v.ok ? `✓ ${sec(v.age)}に撮影` : `× ${sec(v.age)}に失敗`) : '― まだ見ていない';
-    card('pose', POSE_JA[p] + 'から', value, recent ? '最近見た' : notRecent ? 'しばらく見ていない' : '',
-      notRecent && used.pose === p && used.action !== 'WAIT');
+    card('pose', POSE_JA[p] + 'から', value, seenHere ? '前回幼虫が見えた（画像AI）' : recent ? '最近見た' : notRecent ? 'しばらく見ていない' : '',
+      (seenHere || notRecent) && used.pose === p && used.action !== 'WAIT');
   }
   const a = state.arm;
   card('arm', 'アーム', a ? (a.moving ? `動作中（→${POSE_JA[a.pose] || a.pose || '基本位置'}）` : `${sec(a.age)}に停止`) : '記録なし',
-    codes.includes('SELF_ACTUATION_RECENT') ? '動かした直後（自分の揺れ）' : '', codes.includes('SELF_ACTUATION_RECENT'));
+    codes.includes('SELF_ACTUATION_RECENT') ? '動かした直後（自分の揺れ）' :
+      codes.includes('LARVA_LAST_SEEN_HERE') && used.pose === 'FRONT' ? '動かさない（見えている場所）' : '',
+    codes.includes('SELF_ACTUATION_RECENT') || (codes.includes('LARVA_LAST_SEEN_HERE') && used.pose === 'FRONT'));
   const camCodes = ['DEVICE_BUSY', 'ACTION_IN_PROGRESS', 'VISION_REPEATEDLY_FAILED', 'PREVIOUS_ATTEMPT_FAILED'].filter(c => codes.includes(c));
   // the XIAO's own reason (DEVICE_BUSY: still working on an earlier observation) wins over the display count
   const busy = state.busy || codes.includes('DEVICE_BUSY') || codes.includes('ACTION_IN_PROGRESS');

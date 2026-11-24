@@ -15,6 +15,21 @@ namespace {
 // No light sensor exists. Only an operator declaration (RAM, reset at boot) can
 // mark the scene dark; otherwise the policy records LIGHT_UNKNOWN.
 bll::Light operatorLight = bll::Light::Unknown;
+// "observe-mode follow|explore|hold" (0.18.1, hold 0.18.2; RAM only, follow after boot).
+// follow = 0.18.0 rule (look again where the image AI last saw the larva); explore = the views
+// not seen recently, as before; hold = follow, and the arm waits at that view instead of parking.
+enum class ObservationMode : uint8_t { Explore, Follow, Hold };
+ObservationMode observationMode = ObservationMode::Follow;
+const char* observationModeName() {
+  return observationMode == ObservationMode::Explore ? "explore" :
+         observationMode == ObservationMode::Hold ? "hold" : "follow";
+}
+bll::PolicyConfig policyConfig() {
+  bll::PolicyConfig c;
+  c.stayWhereLarvaSeen = observationMode != ObservationMode::Explore;
+  c.holdWhereLarvaSeen = observationMode == ObservationMode::Hold;
+  return c;
+}
 bool lightDeclared = false;
 unsigned decisionSeq = 0;
 // 0.14.0: observation captures run the deployed Vision model on the same frame (INVOKE)
@@ -179,7 +194,7 @@ void runScheduled(bll::SchedulerStep s) {
 }
 
 void armRecheck() {
-  const bll::PolicyConfig config;
+  const bll::PolicyConfig config = policyConfig();
   view = bll::makeView(evidenceTemporalState(), clockNow());
   const uint64_t wait = bll::followUpRecheckInMs(view, config);
   recheckArmed = wait > 0;
@@ -192,7 +207,7 @@ void step() {
   const bll::TemporalState& state = evidenceTemporalState();
   const bll::PolicyCapabilities caps = capabilities();
   const bll::PolicyConstraints limits = constraints();
-  const bll::PolicyConfig config;
+  const bll::PolicyConfig config = policyConfig();
   view = bll::makeView(state, clockNow());
   plan = bll::decide(state, view, caps, limits, config);
   bll::copyText(triggerId, sizeof(triggerId), plan.decide ? plan.triggerId : state.lastPassive.eventId);
@@ -288,6 +303,16 @@ void pollPark() {
   }
   if (!parkWanted || recheckArmed || scheduler.busy() || piezoAdcIsRunning() || !servoAttached()) return;
   if (!calibrated(bll::Pose::Front)) return;
+  // 0.18.2 hold: while the next trigger would look again at the view where the larva was just
+  // seen (observation_core.h holdArmAt), the arm waits there. parkWanted stays set, so the arm
+  // parks as soon as that no longer applies (2 min, streak limit, or lost there).
+  {
+    bll::Pose holdPose;
+    const bll::PolicyConfig config = policyConfig();
+    const bll::TemporalStateView v = bll::makeView(evidenceTemporalState(), clockNow());
+    if (bll::holdArmAt(v, capabilities(), config, holdPose) && calibrated(holdPose) &&
+        servoCurrentUs() == poseUs[static_cast<unsigned>(holdPose)]) return;
+  }
   const uint16_t home = poseUs[static_cast<unsigned>(bll::Pose::Front)];
   if (servoCurrentUs() == home && scheduler.poseConfidence() == bll::PoseConfidence::Assumed) return;
   bll::SchedulerStep s;
@@ -403,6 +428,14 @@ void observationSetLight(const char* value) {
                 lightDeclared ? "OPERATOR_DECLARED" : "NO_SENSOR");
 }
 
+void observationSetMode(const char* value) {
+  if (strcmp(value, "follow") == 0) observationMode = ObservationMode::Follow;
+  else if (strcmp(value, "explore") == 0) observationMode = ObservationMode::Explore;
+  else if (strcmp(value, "hold") == 0) observationMode = ObservationMode::Hold;
+  else { Serial.println("OBSERVATION_ERROR reason=mode_must_be_follow_explore_or_hold"); return; }
+  Serial.printf("OBSERVATION_MODE mode=%s\n", observationModeName());
+}
+
 void observationSetVision(const char* value) {
   if (strcmp(value, "invoke") == 0) frameSource = VisionFrameSource::Invoke;
   else if (strcmp(value, "sample") == 0) frameSource = VisionFrameSource::Sample;
@@ -423,14 +456,14 @@ void observationStatus() {
   const bll::TemporalState& state = evidenceTemporalState();
   const bll::PolicyCapabilities caps = capabilities();
   const bll::PolicyConstraints limits = constraints();
-  const bll::PolicyConfig config;
+  const bll::PolicyConfig config = policyConfig();
   view = bll::makeView(state, clockNow());
   const bll::ActionPlan preview = bll::decide(state, view, caps, limits, config);
   Serial.printf("OBSERVATION_STATE {\"policy_version\":\"%s\",\"reducer_version\":\"%s\","
                 "\"reduced_through\":%lu,\"complete\":%s,\"pending_trigger\":%s,\"intent_open\":%s,"
                 "\"decisions\":%lu,\"waits\":%lu,\"completed\":%lu,\"failed\":%lu,\"interrupted\":%lu,"
                 "\"coalesced_triggers\":%lu,\"light\":\"%s\",\"fixed_camera\":%s,\"device_busy\":%s,"
-                "\"storage_ready\":%s,\"ages_ms\":{",
+                "\"storage_ready\":%s,\"mode\":\"%s\",\"ages_ms\":{",
                 bll::kPolicyVersion, bll::kReducerVersion,
                 static_cast<unsigned long>(state.reducedThrough), view.complete ? "true" : "false",
                 view.pending ? "true" : "false", state.intent.open ? "true" : "false",
@@ -439,7 +472,7 @@ void observationStatus() {
                 static_cast<unsigned long>(state.interrupted),
                 static_cast<unsigned long>(state.coalescedTriggers), lightName(limits.light),
                 caps.pose[0] ? "true" : "false", limits.deviceBusy ? "true" : "false",
-                limits.storageWritable ? "true" : "false");
+                limits.storageWritable ? "true" : "false", observationModeName());
   printAge("last_passive_candidate", view.trigger);
   printAge("last_capture_attempt", view.lastAttempt);
   printAge("last_fixed_capture_success", view.successByPose[0]);

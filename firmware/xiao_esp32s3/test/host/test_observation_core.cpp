@@ -508,7 +508,26 @@ static bool writeScenarios(const char* path) {
     rows.push_back(Row{"同じ候補の続き（撮影予算2回を使い切り・記録しない）", stop.decide ? actionName(stop.action) : "NONE",
                        quoted(stop.reasons), "—"});
     scenarioJson(f, "episode_follow_up", "1つの振動候補で未観測の視点を順に撮り、予算で止まる（3視点を仮定）",
-                 "三視点機構は未製作。視点の可用性は仮定。予算到達後は判断を記録せず終了。", rows, true);
+                 "三視点機構は未製作。視点の可用性は仮定。予算到達後は判断を記録せず終了。", rows, false);
+  }
+  {
+    // 0.18.0: look again where the image AI saw the larva; explore once it is no longer seen there.
+    Harness h;
+    h.caps.pose[0] = false; h.caps.pose[1] = true; h.caps.pose[2] = true; h.caps.pose[3] = true;
+    h.config.order[0] = Pose::Back; h.config.order[1] = Pose::Front;
+    h.config.order[2] = Pose::Top; h.config.order[3] = Pose::Fixed;
+    h.bootEvent(kBootA);
+    std::vector<Row> rows;
+    h.nextLarvaVisible = true;
+    h.now = 1000; rows.push_back(record(h, "振動候補（後ろで画像AIが『見えた』と判定）", Pose::Front));
+    h.now = 21000; rows.push_back(record(h, "次の振動候補（20秒後・後ろでまた『見えた』）", Pose::Front));
+    h.nextLarvaVisible = false;
+    h.now = 41000; rows.push_back(record(h, "次の振動候補（40秒後・後ろでは『見えない』）", Pose::Front));
+    h.now += h.config.cameraCooldownMs;
+    ActionPlan follow = h.step();
+    rows.push_back(Row{"同じ候補の続き（見えなくなったので別の方向へ）", actionName(follow.action), quoted(follow.reasons), "—"});
+    scenarioJson(f, "larva_stay", "幼虫が見えた方向をもう一度撮り、見えなくなったら別の方向を探す（3視点を仮定）",
+                 "『見えた』は画像AIの判定（未検証）で、幼虫の検出ではない。同じ方向は2分以内・連続3回まで。", rows, true);
   }
   std::fprintf(f, "  ]\n}\n");
   return std::fclose(f) == 0;
@@ -538,15 +557,114 @@ static void testLarvaVisibleStopsTheEpisode() {
   ActionPlan third = t.step();
   CHECK(first.action == Action::CaptureFront && second.action == Action::CaptureTop && !third.decide);
   CHECK(has(third, kLarvaVisibleStop) && t.captures == 2);
-  // A new trigger is a new episode: FRONT again (not blocked by the previous sighting).
+  // A new trigger is a new episode: 0.18.0 looks at TOP again first; not seen there, so the
+  // other views follow (a full episode again).
   t.now += 60000; t.nextLarvaVisible = false; t.passive();
   std::vector<ActionPlan> again = runEpisode(t);
   CHECK(again.size() == 3 && !t.state.episodeLarvaVisible);
+  CHECK(again[0].action == Action::CaptureTop && has(again[0], kLarvaLastSeenHere));
   // Rule off: all three views even when the larva is visible.
   Harness off;
   off.caps = h.caps; off.config.stopWhenLarvaVisible = false;
   off.bootEvent(kBootA); off.now = 1000; off.passive(); off.nextLarvaVisible = true;
   CHECK(runEpisode(off).size() == 3);
+}
+
+// 0.18.0: a new trigger looks again where the image AI last saw the larva (within 120 s), at most
+// 3 times in a row; then it explores, and may come back afterwards. Not seen there -> explore at
+// once. Older sightings, another boot or the rule off -> explore. Replay rebuilds the same state.
+static void testLookAgainWhereLarvaWasSeen() {
+  Harness h;
+  h.caps.pose[0] = false; h.caps.pose[1] = true; h.caps.pose[2] = true; h.caps.pose[3] = true;
+  h.bootEvent(kBootA); h.now = 1000; h.passive();
+  ActionPlan first = h.step(); h.now += h.config.cameraCooldownMs;   // FRONT: not seen
+  h.nextLarvaVisible = true; ActionPlan seen = h.step();               // TOP: seen -> episode ends
+  CHECK(first.action == Action::CaptureFront && seen.action == Action::CaptureTop);
+  CHECK(h.state.lastLarvaSeen.present && h.state.lastLarvaPose == Pose::Top && h.state.larvaSeenStreak == 1);
+  // triggers 15 s apart incl. the 5 s cooldown (inside the 30 s view recency). Three stays in a row, each seen again (TOP is "recently checked" but chosen on purpose)
+  for (int i = 0; i < 3; ++i) {
+    h.now += 10000; h.passive();
+    std::vector<ActionPlan> ep = runEpisode(h);
+    CHECK(ep.size() == 1 && ep[0].action == Action::CaptureTop && has(ep[0], kLarvaLastSeenHere));
+    CHECK(has(ep[0], kPassiveCandidateNew) && h.state.episodeLarvaVisible);
+  }
+  CHECK(h.state.larvaSeenStreak == 4);
+  // the fourth trigger explores instead (BACK never seen, then FRONT; TOP recent)
+  h.now += 10000; h.nextLarvaVisible = false; h.passive();
+  std::vector<ActionPlan> explore = runEpisode(h);
+  CHECK(!explore.empty() && explore[0].action == Action::CaptureBack && !has(explore[0], kLarvaLastSeenHere));
+  for (const ActionPlan& p : explore) CHECK(p.action != Action::CaptureTop);
+  CHECK(h.state.lastLarvaSeen.present && h.state.larvaSeenStreak == 1);
+  // within 120 s of the last sighting (about 65 s): back to TOP; not seen there -> the episode
+  // explores the views not checked within 30 s
+  h.now += 40000; h.passive();
+  std::vector<ActionPlan> back = runEpisode(h);
+  CHECK(back.size() >= 2 && back[0].action == Action::CaptureTop && has(back[0], kLarvaLastSeenHere));
+  CHECK(back[1].action != Action::CaptureTop && has(back[1], kEpisodeFollowUp));
+  CHECK(!h.state.lastLarvaSeen.present && h.state.larvaSeenStreak == 0);
+  h.now += 10000; h.passive();
+  CHECK(!has(h.preview(), kLarvaLastSeenHere));  // lost: no stay
+  // replay of the committed log gives the same state
+  TemporalState replay;
+  for (const CommittedEvent& e : h.log) reduce(replay, e);
+  CHECK(replay.lastLarvaSeen.present == h.state.lastLarvaSeen.present && replay.larvaSeenStreak == h.state.larvaSeenStreak);
+
+  // older than 120 s, another boot, rule off: explore as before
+  auto sighted = [&](Harness& x) {
+    x.caps = h.caps; x.bootEvent(kBootA); x.now = 1000; x.passive(); x.nextLarvaVisible = true; x.step();
+    CHECK(x.state.lastLarvaPose == Pose::Front && x.state.larvaSeenStreak == 1);
+  };
+  Harness edge; sighted(edge);
+  edge.now = 1000 + edge.config.larvaStayMs; edge.passive();
+  ActionPlan atLimit = edge.preview();
+  CHECK(has(atLimit, kLarvaLastSeenHere) && atLimit.action == Action::CaptureFront);  // exactly 120 s still counts
+  Harness old; sighted(old);
+  old.now = 1000 + old.config.larvaStayMs + 1; old.passive();
+  CHECK(!has(old.preview(), kLarvaLastSeenHere));
+  Harness reboot; sighted(reboot);
+  reboot.bootEvent(kBootB); reboot.now = 5000; reboot.passive();
+  CHECK(!has(reboot.preview(), kLarvaLastSeenHere));
+  Harness off; off.config.stayWhereLarvaSeen = false; sighted(off);
+  off.now += 20000; off.passive();
+  ActionPlan o = off.preview();
+  CHECK(o.action != Action::CaptureFront && !has(o, kLarvaLastSeenHere));
+  // the safety gates still come first (self-actuation, cooldown)
+  Harness gate; sighted(gate);
+  gate.now += 20000; gate.passive(); gate.constraints.selfActuationRecent = true;
+  ActionPlan g = gate.preview();
+  CHECK(g.action == Action::Wait && has(g, kSelfActuationRecent) && !has(g, kLarvaLastSeenHere));
+}
+
+// 0.18.2 (mode hold): after an episode the arm waits at the view the next trigger would look at
+// again; it parks once the sighting is older than 120 s, the streak limit is reached, or lost.
+static void testHoldArmWhereLarvaWasSeen() {
+  Harness h;
+  h.caps.pose[0] = false; h.caps.pose[1] = true; h.caps.pose[2] = true; h.caps.pose[3] = true;
+  h.config.holdWhereLarvaSeen = true;
+  Pose at = Pose::Fixed;
+  h.bootEvent(kBootA); h.now = 1000;
+  CHECK(!holdArmAt(makeView(h.state, h.clock()), h.caps, h.config, at));  // nothing seen yet: park
+  Harness t; t.caps = h.caps; t.config.holdWhereLarvaSeen = true;
+  t.bootEvent(kBootA); t.now = 1000; t.passive();
+  t.step(); t.now += t.config.cameraCooldownMs; t.nextLarvaVisible = true; t.step();  // FRONT no, TOP seen
+  CHECK(holdArmAt(makeView(t.state, t.clock()), t.caps, t.config, at) && at == Pose::Top);
+  t.now += t.config.larvaStayMs;  // still exactly 120 s after the sighting
+  CHECK(holdArmAt(makeView(t.state, t.clock()), t.caps, t.config, at));
+  t.now += 1;
+  CHECK(!holdArmAt(makeView(t.state, t.clock()), t.caps, t.config, at));  // older: park
+  // streak limit: after 3 stays seen again, the next trigger explores -> park
+  Harness s; s.caps = h.caps; s.config.holdWhereLarvaSeen = true;
+  s.bootEvent(kBootA); s.now = 1000; s.passive(); s.nextLarvaVisible = true; s.step();
+  for (int i = 0; i < 3; ++i) { s.now += 10000; s.passive(); runEpisode(s); }
+  CHECK(s.state.larvaSeenStreak == 4 && !holdArmAt(makeView(s.state, s.clock()), s.caps, s.config, at));
+  // lost there -> park; follow mode (hold off) never holds
+  Harness l; l.caps = h.caps; l.config.holdWhereLarvaSeen = true;
+  l.bootEvent(kBootA); l.now = 1000; l.passive(); l.nextLarvaVisible = true; l.step();
+  l.now += 20000; l.nextLarvaVisible = false; l.passive(); l.step();
+  CHECK(!holdArmAt(makeView(l.state, l.clock()), l.caps, l.config, at));
+  Harness f; f.caps = h.caps;
+  f.bootEvent(kBootA); f.now = 1000; f.passive(); f.nextLarvaVisible = true; f.step();
+  CHECK(!holdArmAt(makeView(f.state, f.clock()), f.caps, f.config, at));
 }
 
 int main(int argc, char** argv) {
@@ -568,6 +686,8 @@ int main(int argc, char** argv) {
   testArmDefaultOrderStartsAtHomeFront();
   testSelfActuationGatesNewTriggersOnly();
   testLarvaVisibleStopsTheEpisode();
+  testLookAgainWhereLarvaWasSeen();
+  testHoldArmWhereLarvaWasSeen();
   for (unsigned bit = 0; bit < kReasonBits; ++bit) CHECK(reasonCode(bit) != nullptr);
   CHECK(reasonCode(kReasonBits) == nullptr);
   if (argc == 3 && std::string(argv[1]) == "--scenarios" && !writeScenarios(argv[2])) {

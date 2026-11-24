@@ -12,7 +12,7 @@ import {FLOW_NODES, FLOW_TEXT, buildFlow, flowPath, flowTimes, paintFlow} from '
 import {buildHistory, codesOf, renderMemory, stateAt} from './memory.js';
 import {orient} from '../common/orient.js';
 import {statusPrefix} from '../common/review_status.js';
-import {POSE_ICON, POSE_JA, RESULT_ICON, STEPS, aiOf, aiText, buildTimeline, doneStages, episodeVerdict, clueText, episodeLabel, markAt, resultText, stagesOf, techText, whyText} from './timeline.js';
+import {POSE_ICON, POSE_JA, RESULT_ICON, STEPS, aiOf, aiText, buildTimeline, doneStages, episodeVerdict, clueText, episodeLabel, markAt, triggerOf, resultText, stagesOf, staysPut, techText, whyText} from './timeline.js';
 
 const $ = id => document.getElementById(id);
 const ANSWER = {LARVA: '幼虫活動', DIG: '人工刺激（掘削）', NOISE: '外乱（声・物音）'};
@@ -20,7 +20,7 @@ const ANSWER = {LARVA: '幼虫活動', DIG: '人工刺激（掘削）', NOISE: '
 const HUMAN = {larva_visible: '幼虫が見える', background: '幼虫は写っていない', uncertain: 'はっきりしない', unusable: '使えない画像'};
 const humanOf = step => { const l = step?.action_id && S.data?.human_labels?.[step.action_id]; return l && HUMAN[l] ? {label: l, text: HUMAN[l]} : null; };
 const S = {mode: 'replay', run: null, ov: null, data: null, ep: null, marks: [], clip: [0, 1], t: 0, playing: false, useVideo: false,
-  offset: 0, last: 0, key: null, ymax: 1, ymin: 0, ready: false, wave: 'low',
+  offset: 0, last: 0, key: null, ymax: 1, ymin: 0, ready: false, wave: 'low', waveChoice: 'auto',
   live: null, liveHeld: null, liveBusy: false, stream: null, liveTimer: null};
 const video = $('video');
 
@@ -80,9 +80,9 @@ function paintFlowFor(mark) {
   $('flowNow').textContent = 'いま：' + FLOW_NODES[cur].label;
   $('flowText').textContent = FLOW_TEXT[cur];
   const step = mark && mark.kind !== 'SENSE' ? stepOf(mark) : null;
-  $('flowWhy').textContent = (cur === 'DEC' || cur === 'WAIT') && step ? `分岐：${step.action === 'WAIT' ? 'WAIT（待つ）' : 'CAPTURE（撮る）'}\n理由：${whyText(step)}` :
+  $('flowWhy').textContent = (cur === 'DEC' || cur === 'WAIT') && step ? `分岐：${step.action === 'WAIT' ? 'WAIT（待つ）' : 'CAPTURE（撮る）'}\n理由：${whyText(step, S.ep)}` :
     cur === 'FOL' ? '分岐：同じ揺れの続きを見るか、終えるか' :
-    cur === 'REC' && step ? resultText(S.ep, mark) : step && !['MON', 'SEN'].includes(cur) ? `この観察：${whyText(step)}` : '';
+    cur === 'REC' && step ? resultText(S.ep, mark) : step && !['MON', 'SEN'].includes(cur) ? `この観察：${whyText(step, S.ep)}` : '';
   const steps = S.ep?.steps || [], done = marks.filter(m => m.kind === 'RESULT' && (!mark || m.t <= mark.t)).length;
   const caps = steps.filter(s => String(s.action || '').startsWith('CAPTURE_')).length, waits = steps.filter(s => s.action === 'WAIT').length;
   $('flowCount').textContent = mark ? `この場面：撮影 ${done}/${caps} 方向${waits ? ` ・ 待機 ${waits} 回` : ''}` : '';
@@ -114,13 +114,20 @@ function stepOf(mark) {
   if (mark && (mark.kind === 'PARK' || mark.kind === 'END')) return steps[steps.length - 1];
   return null;
 }
+/** hold mode (0.18.2): the episode's last image was seen by the image AI and no park follows. */
+function holding(mark) {
+  if (S.mode !== 'replay' || S.ov?.observation_mode?.effective !== 'hold' || mark?.kind !== 'RESULT') return false;
+  const steps = S.ep?.steps || [], i = mark.step;
+  return i === steps.length - 1 && !!aiOf(steps[i])?.seen && !(S.marks || []).some(m => m.kind === 'PARK');
+}
 function paintCards(mark) {
   const ep = S.ep, clue = clueText(ep, mark), step = mark && mark.kind !== 'SENSE' ? stepOf(mark) : null;
   $('clueMain').textContent = clue.main; $('clueIcon').textContent = mark ? 'vibration' : 'visibility';
   $('clueSub').textContent = clue.sub;
+  $('clueTrig').hidden = !clue.trigger; $('clueTrig').textContent = clue.trigger || '';
   const human = mark && ep.answers?.length ? `人の振り返り：${ep.answers.map(a => ANSWER[a] || a).join('・')}` : '';
   $('clueHuman').hidden = !human; $('clueHuman').textContent = human;
-  $('whyMain').textContent = step ? whyText(step) : mark?.none ? '判断なし' : mark?.pending ? '判断しています…' : '—';
+  $('whyMain').textContent = step ? whyText(step, S.ep) : mark?.none ? '判断なし' : mark?.pending ? '判断しています…' : '—';
   $('whySub').textContent = step ? '決まったルールで選びました（学習済みAIではありません）' : '';
   $('whyTech').textContent = step ? techText(step) : '';
   document.querySelector('.card.why').classList.toggle('waiting', mark?.kind === 'WAIT');
@@ -139,8 +146,12 @@ function paintCards(mark) {
   const hl = labelled.map(s => `${POSE_JA[s.pose] || s.pose}：${humanOf(s).text}`);
   $('resultHuman').hidden = !hl.length; $('resultHuman').textContent = hl.length ? `人が写真を確認 → ${hl.join(' ／ ')}` : '';
   const arm = $('armState'), where = POSE_JA[mark?.pose] || mark?.pose;
-  const text = {MOVE: `アーム移動中 → ${where}`, CAPTURE: `撮影中（${where}）`, PARK: 'アーム：基本位置（前）へ戻る'}[mark?.kind];
-  arm.hidden = !text; arm.replaceChildren(...(text ? [icon(RESULT_ICON[mark.kind]), text] : []));
+  // 0.18.0: a look again at FRONT (home) where the larva was seen needs no move; say it is a decision
+  const still = step && ['DECIDE', 'CAPTURE'].includes(mark?.kind) && staysPut(step, S.ep);
+  const text = still ? `アームは動かさない（前回見えた${where}のまま撮影）` :
+    holding(mark) ? `アームは${where}のまま待機（幼虫が見えた方向・2分見えなければ基本位置へ）` :
+    {MOVE: `アーム移動中 → ${where}`, CAPTURE: `撮影中（${where}）`, PARK: 'アーム：基本位置（前）へ戻る'}[mark?.kind];
+  arm.hidden = !text; arm.replaceChildren(...(text ? [icon(still ? 'front_hand' : RESULT_ICON[mark.kind]), text] : []));
 }
 /** done: indexes of steps whose result is already shown. */
 function paintShots(done, mark) {
@@ -236,8 +247,10 @@ function drawWave(t, src, before = 8, after = 4) {
   g.fillStyle = css('--arm');
   for (const s of src.arm || []) if (s.t1_s >= t0 && s.t0_s <= t1) g.fillRect(X(Math.max(t0, s.t0_s)), T, Math.max(2, X(Math.min(t1, s.t1_s)) - X(Math.max(t0, s.t0_s))), h);
   g.fillStyle = css('--cand'); g.strokeStyle = css('--act'); g.lineWidth = 1.5;
+  const tags = [];
   for (const k of src.candidates || []) if (k.t_end_s >= t0 && k.t_start_s <= t1) {
     const a = X(Math.max(t0, k.t_start_s)), b = X(Math.min(t1, k.t_end_s)); g.fillRect(a, T, b - a, h); g.strokeRect(a, T, b - a, h);
+    const tr = triggerOf(k); if (tr) tags.push([a, tr.short]);  // what started this trigger (B2 / フォレスト / 比)
   }
   // low-frequency activity-likeness (PC reference, provisional; lowfreq_activity.py): strip along the top
   g.fillStyle = css('--low');
@@ -256,6 +269,8 @@ function drawWave(t, src, before = 8, after = 4) {
     }
     g.stroke();
   }
+  g.font = 'bold 16px system-ui'; g.fillStyle = css('--act');
+  for (const [x, text] of tags) g.fillText(text, x + 4, T + 26);
   g.strokeStyle = '#eaf2f0'; g.lineWidth = 2; g.beginPath(); g.moveTo(X(t), T); g.lineTo(X(t), T + h); g.stroke();
 }
 function logTicks(lo, hi) {
@@ -263,16 +278,21 @@ function logTicks(lo, hi) {
   for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) for (const m of [1, 2, 5]) { const v = m * 10 ** e; if (v >= lo && v <= hi) out.push(v); }
   return out.length >= 2 ? out : [lo, hi];
 }
-// The graph's source: 1-40 Hz RMS (default, replay only) or the detector's 300-1500 Hz band RMS.
-// Which band started the observations depends on the run: B2 (300-1500 Hz) until 2026-11-22,
+// The graph's source: 1-40 Hz RMS (replay only) or the 300-1500 Hz band RMS (B2's band).
+// Which band started an observation depends on the trigger: B2 (300-1500 Hz) until 2026-11-22,
 // the 1-40 Hz activity (forest or ratio >= 3) on 2026-11-23, either of them from 2026-11-24
-// (overview.candidate_detector LOWFREQ_FOREST_RATIO_OR_B2).
-const WAVE_TEXT = {low: '低周波 1–40 Hz（RMS 250 ms・対数）', band: 'B2 振動候補（300–1500 Hz 帯域RMS）'};
-const WAVE_LABEL = new Proxy({}, {get: (_, k) => {
-  const det = S.ov?.candidate_detector || (S.mode === 'live' ? 'LOWFREQ_FOREST_RATIO_OR_B2' : 'B2_guarded_mad');
-  const trigger = det === 'LOWFREQ_FOREST_RATIO_OR_B2' || (det === 'LOWFREQ_FOREST_RATIO') === (k === 'low');
-  return (trigger ? '撮影のきっかけ：' : '') + WAVE_TEXT[k];
-}});
+// (each candidate's triggered_by). 「きっかけの帯域」(auto, default) shows the band that started
+// the scene on screen; the heading names the scene's trigger.
+const WAVE_TEXT = {low: '低周波 1–40 Hz（RMS 250 ms・対数）', band: '300–1500 Hz 帯域RMS（B2 の帯域）'};
+function paintWaveLabel() {
+  const live = S.mode === 'live', missing = !live && S.wave === 'low' && S.ov && !waveLog();
+  let text = WAVE_TEXT[live || missing ? 'band' : S.wave];
+  if (live) text += '・LIVE は 300–1500 Hz のみ';
+  else if (missing) text += '（この記録では 1–40 Hz のデータを取得できませんでした）';
+  const tr = triggerOf(S.ep), parts = [document.createTextNode(text)];
+  if (tr) parts.push(document.createTextNode(' ・ '), el('b', null, `この場面のきっかけ：${tr.short}（${tr.band === 'band' ? '300–1500 Hz' : '1–40 Hz'}）`));
+  $('waveLabel').replaceChildren(...parts);
+}
 function waveSeries() { return S.wave === 'low' && S.ov?.lowfreq?.t?.length ? S.ov.lowfreq : S.ov?.band; }
 function waveLog() { return S.wave === 'low' && !!S.ov?.lowfreq?.t?.length; }
 /** [ymin, ymax] of the graph over [a, b]: ymax from the peak, ymin (log only) from the quiet floor. */
@@ -285,12 +305,19 @@ function rangeOf(a, b) {
   const ymax = vals[vals.length - 1] * 1.15;
   return [waveLog() ? Math.min(vals[Math.floor(vals.length * 0.05)] * 0.6, ymax / 4) : 0, ymax];
 }
+/** The band to draw: the chosen one, or (auto) the band that started the scene on screen. */
+function wantedWave() {
+  if (S.waveChoice !== 'auto') return S.waveChoice;
+  return triggerOf(S.ep)?.band || S.wave;
+}
 function setWave(kind) {
-  S.wave = kind === 'band' ? 'band' : 'low'; $('waveSel').value = S.wave;
-  try { localStorage.setItem('bll.demo.wave', S.wave); } catch (_) {}
-  const missing = S.wave === 'low' && S.ov && !waveLog();
-  $('waveLabel').textContent = S.mode === 'live' ? WAVE_LABEL.band + '・LIVE は 300–1500 Hz のみ' :
-    missing ? WAVE_LABEL.band + '（この記録・ブリッジでは 1–40 Hz のデータを取得できませんでした）' : WAVE_LABEL[S.wave];
+  S.waveChoice = ['low', 'band'].includes(kind) ? kind : 'auto'; $('waveSel').value = S.waveChoice;
+  try { localStorage.setItem('bll.demo.wave2', S.waveChoice); } catch (_) {}
+  applyWave(wantedWave());
+}
+function applyWave(kind) {
+  S.wave = kind === 'band' ? 'band' : 'low';
+  paintWaveLabel();
   if (S.mode !== 'replay' || !S.ov) return;
   if (S.whole) { for (const w of S.wholeEps || []) [w.ymin, w.ymax] = rangeOf(w.ep.clip_s[0], Math.max(w.ep.clip_s[1], w.end)); S.wholeKey = null; }
   else [S.ymin, S.ymax] = rangeOf(S.clip[0], S.clip[1]);
@@ -363,11 +390,39 @@ function jumpEpisode(d) {
   const target = d > 0 ? at.find(x => x > S.t + 0.5) : [...at].reverse().find(x => x < S.t - 3) ?? S.clip[0];
   if (target != null) seek(target);
 }
+// ---- trigger overlay: the vibration that started this observation, over the video ----
+const VIBE_S = 3.0;  // replay: shown this long from the trigger's start (recorded time)
+let vibeKey = null;
+function nextText(ep, live) {
+  const steps = ep?.steps || [], first = steps[0];
+  if (!first) return live ? '→ 観察係（MCU）が次の行動を判断しています' : '';
+  if (first.action === 'WAIT') return '→ 今回は撮影せずに待ちます';
+  if (!String(first.action || '').startsWith('CAPTURE_')) return '';
+  const where = POSE_JA[first.pose] || first.pose;
+  if (staysPut(first, ep) || (first.pose === 'FRONT' && !live)) return `→ アームはそのまま、${where}から撮影します`;
+  return `→ アームを${where}へ動かして撮影します`;
+}
+/** show: whether the overlay is on; ep: the episode it belongs to. */
+function paintVibe(show, ep, live = false) {
+  const box = $('vibe');
+  const key = show ? `${S.run}|${ep?.candidate_seq}|${(ep?.steps || []).length}|${live}` : null;
+  if (key === vibeKey) return;
+  vibeKey = key; box.hidden = !show;
+  if (!show) return;
+  const tr = triggerOf(ep);
+  $('vibeTrig').textContent = tr ? `きっかけ：${tr.short}（${tr.band === 'band' ? '300–1500 Hz' : '1–40 Hz'}）` : 'きっかけの振動';
+  const next = nextText(ep, live);
+  $('vibeNext').textContent = next; $('vibeNext').hidden = !next;
+  box.classList.toggle('wait', (ep?.steps || [])[0]?.action === 'WAIT');
+}
 function paintReplay(t) {
   if (S.whole) setWholeEpisode(t);
+  if (S.waveChoice === 'auto' && wantedWave() !== S.wave) { applyWave(wantedWave()); if (S.whole) setWholeEpisode(t); }
   const mark = markAt(S.marks, t), key = S.marks.indexOf(mark);
+  const start = S.ep?.t_start_s;
+  paintVibe(!S.wholeIdle && start != null && t >= start && t < start + VIBE_S, S.ep);
   if (key !== S.key) {
-    S.key = key; paintNav(mark); paintCards(mark); paintFlowFor(mark);
+    S.key = key; paintNav(mark); paintCards(mark); paintFlowFor(mark); paintWaveLabel();
     paintShots(new Set((S.keepShots || S.marks).filter(m => m.kind === 'RESULT' && m.t <= t).map(m => m.step)), mark);
   }
   const scene = S.whole ? (() => { const {i, idle} = wholeAt(t); return i < 0 || idle ? '  見守り中' : `  場面 ${i + 1}/${S.wholeEps.length}`; })() : '';
@@ -427,12 +482,14 @@ function chooseClock() {
   $('noVideo').hidden = !!v?.available; $('vwrap').hidden = !v?.available;
   if (v?.available && !S.useVideo && S.ready) $('noVideo').hidden = false, $('noVideo').textContent = 'この場面は動画の録画範囲外です';
 }
+// 0.18.1: the observation mode the run asked the MCU for (follow / explore)
+function modeText(o) { return o?.effective ? ` ・ 観察の方式：${{follow: '追従（見えた方向をもう一度見る）', hold: '追従・その場で待つ（見えた方向でアームを止める）', explore: '探索（しばらく見ていない方向から）'}[o.effective] || o.effective}` : ''; }
 function replayFooter() {
   const d = S.data, v = S.ov?.video, sync = !v?.available ? '動画なし（記録の時刻で再生）' :
     v.offset_source === 'SAVED_REVIEW' ? '動画との時刻合わせ：振り返り画面で確認済み' : '動画との時刻合わせ：PCの受信時刻からの推定（数秒ずれることがあります）';
   const est = (S.ep?.steps || []).some(s => s.time_basis === 'ESTIMATED_EVEN_SPACING') ? ' ・ 撮影時刻は古い記録のため均等割りの推定' : '';
   $('foot').textContent = `保存した実際の記録の再生（LIVEではありません）${S.whole ? ' ・ 記録全体を通しで再生（場面は時刻に合わせて自動で切り替え）' : ''} ・ ${sync}${est} ・ 工程の切り替わりは記録時刻からの目安 ・ 判断はルールベース（学習済みAIではありません） ・ ` +
-    `幼虫の判定は画像AI（Vision V2 上の分類モデル）の出力、確度はモデルのスコア ・ 記録 ${jst(0).replace('（推定）', '')}から ${clock(d.duration_s)}` + (d.case_id ? ` ・ ケース ${d.case_id}` : '');
+    `幼虫の判定は画像AI（Vision V2 上の分類モデル）の出力、確度はモデルのスコア${modeText(S.ov?.observation_mode)} ・ 記録 ${jst(0).replace('（推定）', '')}から ${clock(d.duration_s)}` + (d.case_id ? ` ・ ケース ${d.case_id}` : '');
 }
 function fillEpisodes() {
   $('episode').replaceChildren(Object.assign(el('option', null, `記録全体を通しで再生（場面 ${S.data.episodes.length} 件）`), {value: WHOLE}),
@@ -445,6 +502,7 @@ function openEpisode(index) {
   index = Math.max(0, Math.min(eps.length - 1, index)); $('episode').value = index;
   S.ep = eps[index];
   S.marks = buildTimeline(S.ep, S.ov.actuation || []);
+  if (S.waveChoice === 'auto') S.wave = wantedWave();
   const lastMark = S.marks[S.marks.length - 1]?.t ?? S.ep.clip_s[1];
   S.clip = [S.ep.clip_s[0], Math.min(S.data.duration_s, Math.max(S.ep.clip_s[1], lastMark + 2))];
   [S.ymin, S.ymax] = rangeOf(S.clip[0], S.clip[1]);
@@ -463,9 +521,11 @@ async function openRun(run, epIndex) {
     const [ov, data] = await Promise.all([getJSON(`/api/review/overview?run=${encodeURIComponent(run)}`), getJSON(`/api/review/episodes?run=${encodeURIComponent(run)}`)]);
     S.ov = ov; S.data = data;
   } catch (e) { $('error').textContent = '読み込めません: ' + e.message; return; }
+  // hold mode (0.18.2): a look again starts where the arm waited, without a move
+  if (S.ov?.observation_mode?.effective === 'hold') for (const ep of S.data.episodes) ep.hold = true;
   S.history = buildHistory(S.data.episodes, S.ov.actuation || []); memKey = flowMemKey = null;
   if (S.mode !== 'replay') return;
-  setWave(S.wave);
+  setWave(S.waveChoice);
   fillEpisodes();
   loadRunVideo();
   if (epIndex === WHOLE) { openWhole(); return; }
@@ -534,11 +594,14 @@ function paintLive(s) {
   if (answered && S.liveHeld.at == null) S.liveHeld.at = s.elapsed_s ?? 0;
   const {ep, mark} = liveState(s, S.liveHeld.at);
   S.ep = ep;
+  // live: from the vibration until the MCU's first decision is known
+  paintVibe(!!s.running && (mark?.kind === 'SENSE' || (mark?.kind === 'DECIDE' && mark.pending)), ep, true);
   const key = JSON.stringify([s.run_id, s.running, seq, mark, ep.steps.length]);
   if (key !== S.key) {
-    S.key = key; paintNav(mark); paintCards(mark); paintFlowFor(mark);
+    S.key = key; paintNav(mark); paintCards(mark); paintFlowFor(mark); paintWaveLabel();
     paintShots(new Set(ep.steps.map((_, i) => i)), mark);
     if (!s.running) {
+      $('clueTrig').hidden = true;
       $('clueMain').textContent = '取得していません'; $('clueIcon').textContent = 'pause_circle';
       $('clueSub').textContent = '取得画面（AD3ピエゾ）で計測を開始すると、ここに観測ループが表示されます';
     }
@@ -562,11 +625,12 @@ function liveFooter(s) {
 
 // ================= mode switch =================
 function setMode(mode) {
-  S.mode = mode; S.key = null; pause(); $('clueLow').hidden = true; document.querySelector('.side').classList.remove('spot', 'mem');
+  S.mode = mode; S.key = null; pause(); paintVibe(false); $('clueLow').hidden = true; document.querySelector('.side').classList.remove('spot', 'mem');
   $('flowMem').hidden = true; $('flowText').hidden = false; $('flowCount').hidden = false;
   if (mode === 'live') $('memBody').textContent = 'LIVE では記憶欄を表示しません（記録の再生で表示します）';
   memKey = flowMemKey = null;
-  $('waveLabel').textContent = mode === 'live' ? WAVE_LABEL.band + '・LIVE は 300–1500 Hz のみ' : WAVE_LABEL[S.wave];
+  if (mode === 'live') S.ep = {steps: [], answers: []};
+  paintWaveLabel();
   document.body.classList.toggle('live', mode === 'live');
   $('mode').value = mode;
   $('replayTag').hidden = mode === 'live'; $('liveTag').hidden = mode !== 'live';
@@ -602,8 +666,9 @@ function setMode(mode) {
   $('play').onclick = () => (S.playing ? pause() : play());
   $('rewind').onclick = () => { pause(); seek(S.clip[0]); };
   $('speed').onchange = () => { video.playbackRate = +$('speed').value; };
-  let savedWave = null; try { savedWave = localStorage.getItem('bll.demo.wave'); } catch (_) {}
-  setWave(new URLSearchParams(location.search).get('wave') || savedWave || 'low');
+  // bll.demo.wave2: the choice since 「きっかけの帯域」 (2026-11-24); the old key always held low/band
+  let savedWave = null; try { savedWave = localStorage.getItem('bll.demo.wave2'); } catch (_) {}
+  setWave(new URLSearchParams(location.search).get('wave') || savedWave || 'auto');
   $('waveSel').onchange = () => setWave($('waveSel').value);
   $('seek').oninput = () => seek(S.clip[0] + (+$('seek').value / 1000) * (S.clip[1] - S.clip[0]));
   $('sound').onchange = () => { if (S.mode === 'replay') video.muted = !$('sound').checked; };

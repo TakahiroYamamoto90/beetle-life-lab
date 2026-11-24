@@ -484,6 +484,10 @@ bool append(const char* type, const PassiveMessage* passive = nullptr, const Evi
     settings["max_consecutive_failures"] = decision->config->maxConsecutiveFailures;
     settings["max_captures_per_episode"] = decision->config->maxCapturesPerEpisode;
     settings["stop_when_larva_visible"] = decision->config->stopWhenLarvaVisible;
+    settings["stay_where_larva_seen"] = decision->config->stayWhereLarvaSeen;  // 0.18.0
+    settings["larva_stay_ms"] = decision->config->larvaStayMs;
+    settings["max_larva_stays"] = decision->config->maxLarvaStays;
+    settings["hold_where_larva_seen"] = decision->config->holdWhereLarvaSeen;  // 0.18.2
   } else if (outcome) {
     auto result = doc["result"].to<JsonObject>();
     result["scope"] = "OBSERVATION_ACTION";

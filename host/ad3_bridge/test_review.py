@@ -531,7 +531,8 @@ class EpisodeViewTest(unittest.TestCase):
             (run / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
             (run / 'candidates.jsonl').write_text(
                 json.dumps(dict(candidate_seq=1, t_start_s=1.0, t_end_s=1.4, peak_score=9.0)) + '\n' +
-                json.dumps(dict(candidate_seq=2, t_start_s=2.2, t_end_s=2.4, peak_score=5.0)) + '\n', encoding='utf-8')
+                json.dumps(dict(candidate_seq=2, t_start_s=2.2, t_end_s=2.4, peak_score=5.0, detector='LOWFREQ_FOREST_RATIO',
+                                triggered_by=['FOREST'], forest_p=0.8, ratio=2.1)) + '\n', encoding='utf-8')
             step = dict(action='CAPTURE_FRONT', target_pose='FRONT', action_id='obs-' + 'a' * 32 + '-1',
                         reason_codes=['PASSIVE_CANDIDATE_NEW'], image_verified=True, image_url='/files/x/1.jpg',
                         frame_received_at_pc=zero + '1.900+00:00', result=dict(capture='SUCCESS'))
@@ -559,6 +560,9 @@ class EpisodeViewTest(unittest.TestCase):
             self.assertEqual(first['answers'], ['DIG'])
             self.assertEqual(second['answers'], ['NOISE'])  # point within 1 s after the candidate
             self.assertEqual(second['steps'][0]['action'], 'WAIT')
+            # what started each trigger (demo): a record without triggered_by was B2
+            self.assertEqual(first['trigger'], dict(detector='B2_guarded_mad', by=['B2'], forest_p=None, ratio=None, b2_score=9.0))
+            self.assertEqual((second['trigger']['by'], second['trigger']['forest_p'], second['trigger']['b2_score']), (['FOREST'], 0.8, None))
             self.assertEqual(first['clip_s'], [0.0, 3.0])  # 5 s before (clamped) to the end of the run
             self.assertIsNone(first['clip_video_s'])  # no video in this run
             self.assertTrue(all(e['biological_activity'] == 'UNKNOWN' for e in data['episodes']))
@@ -634,7 +638,17 @@ class PageScriptTest(unittest.TestCase):
                   'const wait=m.buildTimeline({t_start_s:3,t_end_s:4,clip_s:[0,10],steps:[{action:"WAIT",reason_codes:["SELF_ACTUATION_RECENT"]}]},[]);'
                   'console.log(JSON.stringify({marks:marks.map(x=>[x.t,x.kind]),at:[9,10.5,12,13.5,14.5,15,17.6,20,22].map(t=>m.stagesOf(m.markAt(marks,t))),'
                   'why:ep.steps.map(m.whyText),result:[m.resultText(ep,marks[4]),m.resultText(ep,marks[8]),m.resultText(ep,marks[10])],done:[m.doneStages(marks,marks[4]).sort(),m.doneStages(marks,marks[6]).sort()],'
-                  'wait:wait.map(x=>x.kind),waitStages:m.stagesOf(m.markAt(wait,5)),waitWhy:m.whyText({action:"WAIT",reason_codes:["SELF_ACTUATION_RECENT"]})}))})')
+                  'wait:wait.map(x=>x.kind),waitStages:m.stagesOf(m.markAt(wait,5)),waitWhy:m.whyText({action:"WAIT",reason_codes:["SELF_ACTUATION_RECENT"]}),'
+                  'trig:[m.triggerText({trigger:{detector:"B2_guarded_mad",by:["B2"],b2_score:14.93}}),'
+                  'm.triggerText({detector:"LOWFREQ_FOREST_RATIO",triggered_by:["FOREST","RATIO_3"],forest_p:0.712,ratio:3.44}),'
+                  'm.triggerText({detector:"B2_guarded_mad",peak_score:6}),m.triggerText({steps:[]})],'
+                  'band:m.triggerOf({detector:"LOWFREQ_FOREST_RATIO",triggered_by:["RATIO_3"]}).band,'
+                  'label:m.episodeLabel({t_start_s:3,steps:[],trigger:{detector:"B2_guarded_mad",by:["B2"]}},0,x=>String(x)),'
+                  'stay:(()=>{const s0={action:"CAPTURE_BACK",pose:"BACK",reason_codes:["PASSIVE_CANDIDATE_NEW","LARVA_LAST_SEEN_HERE"],capture:"SUCCESS",ai:{class_name:"BACKGROUND",score:70}};'
+                  'const s1={action:"CAPTURE_FRONT",pose:"FRONT",reason_codes:["EPISODE_FOLLOW_UP","FRONT_NOT_RECENTLY_OBSERVED"],capture:"SUCCESS"};'
+                  'const e={steps:[s0,s1]};const f0={...s0,action:"CAPTURE_FRONT",pose:"FRONT",t_s:5},fe={t_start_s:1,t_end_s:2,steps:[f0]};'
+                  'return [m.whyText(s0,e),m.whyText(s1,e),m.whyText(s1),m.whyText(f0,fe),m.resultText(fe,{kind:"DECIDE",step:0,pose:"FRONT"}),'
+                  'm.episodeLabel(fe,0,String),m.staysPut(s0,e)]})()}))})')
         result = subprocess.run([node, '-e', script, module, str(Path(__file__).with_name('observation_view.js'))],
                                 capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(result.returncode, 0, result.stderr[:600])
@@ -652,6 +666,20 @@ class PageScriptTest(unittest.TestCase):
         self.assertEqual(out['wait'], ['SENSE', 'WAIT', 'END'])
         self.assertEqual(out['waitStages'], [2, 3])
         self.assertEqual(out['waitWhy'], 'カメラを動かした直後なので、少し待っています')
+        # the trigger that started the scene (B2 or the 1-40 Hz forest/ratio), from the record
+        self.assertEqual(out['trig'], ['きっかけ：B2（300–1500 Hz の短い振動・スコア 14.9）',
+                                       'きっかけ：1–40 Hz の低周波（フォレスト 確率 0.71・比 ×3.4）',
+                                       'きっかけ：B2（300–1500 Hz の短い振動・スコア 6.0）', ''])
+        self.assertEqual(out['band'], 'low')
+        self.assertTrue(out['label'].endswith('きっかけ B2'))
+        # 0.18.0: back to where the image AI saw the larva; not seen there -> look elsewhere
+        self.assertEqual(out['stay'], ['前回幼虫が見えた後ろから、もう一度確認します',
+                                       '後ろからは見えなくなったので、前から探します',
+                                       '同じ揺れの続きとして、前からも確認します',
+                                       # FRONT is home: no arm move, said as a decision
+                                       '前回幼虫が見えた前から、アームを動かさずにもう一度確認します',
+                                       'このまま前から撮影します（アームは動かしません）',
+                                       '#1  1  撮影 1 方向（前）  ・ 動かずに確認', False])
 
     def test_demo_flow_path_follows_the_marks(self):
         """/demo state-transition diagram: the path comes from the episode marks, with the follow-up
